@@ -83,11 +83,11 @@ const app = {
     box.innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)app.closeModal()">
         <div class="modal">
-          <div class="modal-title">${title}</div>
-          <div class="modal-body">${body}</div>
+          <div class="modal-title">${this.escapeHtml(title)}</div>
+          <div class="modal-body">${this.escapeHtml(body)}</div>
           <div class="modal-footer">
             <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
-            <button class="btn ${isDanger?'btn-danger':'btn-primary'}" id="modal-confirm">${confirmText}</button>
+            <button class="btn ${isDanger?'btn-danger':'btn-primary'}" id="modal-confirm">${this.escapeHtml(confirmText)}</button>
           </div>
         </div>
       </div>`;
@@ -105,12 +105,22 @@ const app = {
   statusBadge(s) {
     const map = { active: ['活跃','badge-active'], archived: ['已归档','badge-archived'], success: ['成功','badge-success'], failed: ['失败','badge-failed'], pending: ['待观察','badge-pending'] };
     const [text, cls] = map[s] || [s,''];
-    return `<span class="badge ${cls}">${text}</span>`;
+    return `<span class="badge ${cls}">${this.escapeHtml(text)}</span>`;
   },
 
   formatDate(d) {
     if (!d) return '-';
     return d.substring(0, 10);
+  },
+
+  escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch]));
   },
 
   // ===== Auth =====
@@ -138,14 +148,15 @@ const app = {
   // ===== Pages =====
   renderLogin(el) {
     const last = localStorage.getItem('username') || '';
+    const safeLast = this.escapeHtml(last);
     el.innerHTML = `
       <div style="display:flex;align-items:center;justify-content:center;min-height:70vh;">
         <div class="card" style="width:360px;text-align:center;">
           <h2 style="margin:0 0 4px;font-size:20px;">样品库知识库</h2>
           <p style="margin:0 0 20px;color:var(--text-sub);font-size:13px;">研发样品与配方记录工具</p>
-          <input id="login-user" class="input" placeholder="请输入用户名" value="${last}" onkeydown="if(event.key==='Enter')app.login()" style="margin-bottom:12px;">
+          <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()" style="margin-bottom:12px;">
           <button class="btn btn-primary" style="width:100%;" onclick="app.login()">登录</button>
-          ${last?`<p style="margin-top:12px;font-size:13px;color:var(--text-weak);">上次登录: ${last}</p>`:''}
+          ${last?`<p style="margin-top:12px;font-size:13px;color:var(--text-weak);">上次登录: ${safeLast}</p>`:''}
         </div>
       </div>`;
   },
@@ -154,7 +165,8 @@ const app = {
     const q = params.get('q') || '';
     const status = params.get('status') || 'active';
     const page = parseInt(params.get('page') || '1');
-    const r = await this.get(`/api/products?q=${encodeURIComponent(q)}&status=${status}&page=${page}`);
+    const safeQ = this.escapeHtml(q);
+    const r = await this.get(`/api/products?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&page=${page}`);
     if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>加载失败</h3></div>'; return; }
     const { items, total, page_size } = r.data;
     const totalPages = Math.max(1, Math.ceil(total / page_size));
@@ -169,9 +181,9 @@ const app = {
     } else {
       rows = items.map(p => `
         <tr onclick="location.hash='#/products/${p.id}'" class="${p.状态==='archived'?'archived':''}">
-          <td><a href="#/products/${p.id}" onclick="event.stopPropagation()">${p.品号}</a></td>
-          <td>${p.品名}</td>
-          <td>${p.规格}</td>
+          <td><a href="#/products/${p.id}" onclick="event.stopPropagation()">${this.escapeHtml(p.品号)}</a></td>
+          <td>${this.escapeHtml(p.品名)}</td>
+          <td>${this.escapeHtml(p.规格)}</td>
           <td>${p.当前数量}</td>
           <td>${this.statusBadge(p.状态)}</td>
           <td>${p.配方数}</td>
@@ -193,7 +205,7 @@ const app = {
         <button class="btn btn-primary" onclick="location.hash='#/products/new'">+ 新建产品</button>
       </div>
       <div class="filter-bar">
-        <input class="input" id="prod-q" placeholder="搜索品号 / 品名……" value="${q}" onkeydown="if(event.key==='Enter')app.searchProducts()" style="min-width:220px;">
+        <input class="input" id="prod-q" placeholder="搜索品号 / 品名……" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()" style="min-width:220px;">
         <select class="input" id="prod-status" onchange="app.searchProducts()">
           <option value="active" ${status==='active'?'selected':''}>活跃</option>
           <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
@@ -240,15 +252,15 @@ const app = {
         <h3 style="margin:0 0 16px;font-size:16px;">基本信息</h3>
         <div class="form-grid">
           <label>品号 <span style="color:var(--danger)">*</span></label>
-          <div><input class="input" id="pf-品号" value="${data.品号}"><div class="field-error hide" id="err-品号"></div></div>
+          <div><input class="input" id="pf-品号" value="${this.escapeHtml(data.品号)}"><div class="field-error hide" id="err-品号"></div></div>
           <label>品名 <span style="color:var(--danger)">*</span></label>
-          <div><input class="input" id="pf-品名" value="${data.品名}"><div class="field-error hide" id="err-品名"></div></div>
+          <div><input class="input" id="pf-品名" value="${this.escapeHtml(data.品名)}"><div class="field-error hide" id="err-品名"></div></div>
           <label>规格 <span style="color:var(--danger)">*</span></label>
-          <div><input class="input" id="pf-规格" value="${data.规格}"><div class="field-error hide" id="err-规格"></div></div>
+          <div><input class="input" id="pf-规格" value="${this.escapeHtml(data.规格)}"><div class="field-error hide" id="err-规格"></div></div>
           <label>当前数量</label>
           <div><input class="input" id="pf-当前数量" type="number" value="${data.当前数量}"></div>
           <label>备注</label>
-          <div><textarea class="input" id="pf-备注">${data.备注||''}</textarea></div>
+          <div><textarea class="input" id="pf-备注">${this.escapeHtml(data.备注||'')}</textarea></div>
         </div>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
           <button class="btn btn-secondary" onclick="location.hash='#/products'">取消</button>
@@ -293,24 +305,24 @@ const app = {
     const showTab = hash.includes('tab=success') ? 'success' : 'recipes';
 
     el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / ${p.品号}</div>
+      <div class="breadcrumb"><a href="#/products">产品列表</a> / ${this.escapeHtml(p.品号)}</div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
           <div>
-            <h2 style="margin:0 0 6px;font-size:20px;">${p.品号} ${p.品名}</h2>
+            <h2 style="margin:0 0 6px;font-size:20px;">${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</h2>
             <div style="color:var(--text-sub);font-size:13px;">
-              规格: ${p.规格} &nbsp; 当前数量: ${p.当前数量} &nbsp; 状态: ${this.statusBadge(p.状态)}
+              规格: ${this.escapeHtml(p.规格)} &nbsp; 当前数量: ${p.当前数量} &nbsp; 状态: ${this.statusBadge(p.状态)}
             </div>
-            ${p.备注?`<div style="margin-top:6px;color:var(--text-sub);font-size:13px;">备注: ${p.备注}</div>`:''}
+            ${p.备注?`<div style="margin-top:6px;color:var(--text-sub);font-size:13px;">备注: ${this.escapeHtml(p.备注)}</div>`:''}
           </div>
           <div style="display:flex;gap:8px;">
             ${p.状态==='active'?`
               <button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${p.id}'">新建配方</button>
               <button class="btn btn-secondary" onclick="location.hash='#/products/${p.id}/edit'">编辑</button>
-              <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id},'${p.品号}')">归档</button>
+              <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id})">归档</button>
             `:`
               <button class="btn btn-secondary" onclick="app.restoreProduct(${p.id})">恢复</button>
-              <button class="btn btn-danger" onclick="app.deleteProduct(${p.id},'${p.品号}')">删除</button>
+              <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})">删除</button>
             `}
           </div>
         </div>
@@ -341,11 +353,11 @@ const app = {
 
     const rows = items.map(item => `
       <tr onclick="location.hash='#/recipes/${item.id}'">
-        <td>${item.试验日期}</td>
-        <td>${item.配方名称||'-'}</td>
+        <td>${this.escapeHtml(item.试验日期)}</td>
+        <td>${this.escapeHtml(item.配方名称||'-')}</td>
         <td>${this.statusBadge(item.状态)}</td>
         <td>${item.用了多少||'-'}${item.用了多少?'g':''}</td>
-        <td>${item.created_by||'-'}</td>
+        <td>${this.escapeHtml(item.created_by||'-')}</td>
         <td><a href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
       </tr>
     `).join('');
@@ -389,8 +401,8 @@ const app = {
       </thead><tbody>${rows}</tbody></table></div>`;
   },
 
-  archiveProduct(id, name) {
-    this.modal('确认归档产品 ' + name + '?', '归档后默认不会在产品列表显示,但可以从"已归档"中恢复。', () => {
+  archiveProduct(id) {
+    this.modal('确认归档这个产品?', '归档后默认不会在产品列表显示,但可以从"已归档"中恢复。', () => {
       this.post(`/api/products/${id}/archive`).then(r => {
         if (r.ok) { this.toast('已归档'); location.hash='#/products'; }
         else this.toast(r.error, 'error');
@@ -405,8 +417,8 @@ const app = {
     });
   },
 
-  deleteProduct(id, name) {
-    this.modal('确认删除产品 ' + name + '?', '删除后会移除该产品及其配方记录,不可恢复。', () => {
+  deleteProduct(id) {
+    this.modal('确认删除这个产品?', '删除后会移除该产品及其配方记录,不可恢复。', () => {
       this.del(`/api/products/${id}`).then(r => {
         if (r.ok) { this.toast('已删除'); location.hash='#/products?status=archived'; }
         else this.toast(r.error, 'error');
@@ -423,21 +435,21 @@ const app = {
       data = r.data;
     }
     const prods = await this.get('/api/products?status=active&page_size=999');
-    const productOptions = (prods.data?.items||[]).map(p => `<option value="${p.id}" ${p.id==data.产品id?'selected':''}>${p.品号} ${p.品名}</option>`).join('');
+    const productOptions = (prods.data?.items||[]).map(p => `<option value="${p.id}" ${p.id==data.产品id?'selected':''}>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</option>`).join('');
 
     const matRows = (data.原料辅料 && data.原料辅料.length) ? data.原料辅料.map((m,i) => this._matRow(i, m)).join('') : this._matRow(0, {类型:'原料'});
 
     el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${data.产品id}">${data.品号||''}</a> / ${id?'编辑配方':'新建配方'}</div>
+      <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${data.产品id}">${this.escapeHtml(data.品号||'')}</a> / ${id?'编辑配方':'新建配方'}</div>
       <div class="card">
         <h3 style="margin:0 0 16px;font-size:16px;">试验信息</h3>
         <div class="form-grid">
           <label>产品 <span style="color:var(--danger)">*</span></label>
           <select class="input" id="rf-产品id">${productOptions}</select>
           <label>试验日期 <span style="color:var(--danger)">*</span></label>
-          <input class="input" id="rf-试验日期" type="date" value="${data.试验日期}">
+          <input class="input" id="rf-试验日期" type="date" value="${this.escapeHtml(data.试验日期)}">
           <label>配方名称</label>
-          <input class="input" id="rf-配方名称" value="${data.配方名称||''}">
+          <input class="input" id="rf-配方名称" value="${this.escapeHtml(data.配方名称||'')}">
           <label>用了多少</label>
           <input class="input" id="rf-用了多少" type="number" value="${data.用了多少||''}">
         </div>
@@ -460,7 +472,7 @@ const app = {
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="rf-状态" value="pending" ${data.状态==='pending'?'checked':''}> 待观察</label>
         </div>
         <label style="color:var(--text-sub);font-size:14px;">备注</label>
-        <textarea class="input" id="rf-备注" style="margin-top:6px;">${data.备注||''}</textarea>
+        <textarea class="input" id="rf-备注" style="margin-top:6px;">${this.escapeHtml(data.备注||'')}</textarea>
         <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
           <button class="btn btn-secondary" onclick="history.back()">取消</button>
           <button class="btn btn-primary" id="rf-save" onclick="app.saveRecipe(${id||0})">保存配方</button>
@@ -471,9 +483,9 @@ const app = {
   _matRow(idx, m={}) {
     return `<tr data-idx="${idx}">
       <td><select class="input" data-field="类型"><option value="原料" ${m.类型==='原料'?'selected':''}>原料</option><option value="辅料" ${m.类型==='辅料'?'selected':''}>辅料</option></select></td>
-      <td><input class="input" data-field="名称" value="${m.名称||''}"></td>
+      <td><input class="input" data-field="名称" value="${this.escapeHtml(m.名称||'')}"></td>
       <td><input class="input" data-field="用量" type="number" step="any" value="${m.用量||''}"></td>
-      <td><input class="input" data-field="单位" list="unit-list" value="${m.单位||''}"></td>
+      <td><input class="input" data-field="单位" list="unit-list" value="${this.escapeHtml(m.单位||'')}"></td>
       <td><button class="btn btn-subtle-danger" onclick="this.closest('tr').remove()">删除</button></td>
     </tr>`;
   },
@@ -547,13 +559,13 @@ const app = {
     const hashInfo = (sameHash.data||[]).find(x=>x.配方hash===d.配方hash);
 
     el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${d.产品id}">${d.品号}</a> / ${d.配方名称||'配方详情'}</div>
+      <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${d.产品id}">${this.escapeHtml(d.品号)}</a> / ${this.escapeHtml(d.配方名称||'配方详情')}</div>
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;">
           <div>
-            <h2 style="margin:0 0 8px;font-size:20px;">${d.配方名称||'未命名配方'}</h2>
+            <h2 style="margin:0 0 8px;font-size:20px;">${this.escapeHtml(d.配方名称||'未命名配方')}</h2>
             <div style="color:var(--text-sub);font-size:13px;">
-              状态: ${this.statusBadge(d.状态)} &nbsp; 日期: ${d.试验日期} &nbsp; 用量: ${d.用了多少||'-'} &nbsp; 创建人: ${d.created_by||'-'}
+              状态: ${this.statusBadge(d.状态)} &nbsp; 日期: ${this.escapeHtml(d.试验日期)} &nbsp; 用量: ${d.用了多少||'-'} &nbsp; 创建人: ${this.escapeHtml(d.created_by||'-')}
             </div>
             <div style="margin-top:8px;">
               <span class="hash">${d.配方hash}</span>
@@ -570,14 +582,14 @@ const app = {
       <div class="card" style="max-width:480px;">
         <h3 style="margin:0 0 12px;font-size:16px;">原料</h3>
         <table style="border:none;"><tbody>
-          ${原料.map(m=>`<tr><td style="border:none;padding:6px 0;">${m.名称}</td><td style="border:none;padding:6px 0;text-align:right;font-weight:600;">${m.用量} ${m.单位}</td></tr>`).join('')}
+          ${原料.map(m=>`<tr><td style="border:none;padding:6px 0;">${this.escapeHtml(m.名称)}</td><td style="border:none;padding:6px 0;text-align:right;font-weight:600;">${m.用量} ${this.escapeHtml(m.单位)}</td></tr>`).join('')}
         </tbody></table>
       </div>`:''}
       ${辅料.length?`
       <div class="card" style="max-width:480px;">
         <h3 style="margin:0 0 12px;font-size:16px;">辅料</h3>
         <table style="border:none;"><tbody>
-          ${辅料.map(m=>`<tr><td style="border:none;padding:6px 0;">${m.名称}</td><td style="border:none;padding:6px 0;text-align:right;font-weight:600;">${m.用量} ${m.单位}</td></tr>`).join('')}
+          ${辅料.map(m=>`<tr><td style="border:none;padding:6px 0;">${this.escapeHtml(m.名称)}</td><td style="border:none;padding:6px 0;text-align:right;font-weight:600;">${m.用量} ${this.escapeHtml(m.单位)}</td></tr>`).join('')}
         </tbody></table>
       </div>`:''}
       ${hashInfo?`
@@ -602,7 +614,7 @@ const app = {
   async renderSuccessRate(el, params) {
     const productId = params.get('product_id') || '';
     const prods = await this.get('/api/products?status=active&page_size=999');
-    const options = `<option value="">全部产品</option>` + (prods.data?.items||[]).map(p=>`<option value="${p.id}" ${p.id==productId?'selected':''}>${p.品号} ${p.品名}</option>`).join('');
+    const options = `<option value="">全部产品</option>` + (prods.data?.items||[]).map(p=>`<option value="${p.id}" ${p.id==productId?'selected':''}>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</option>`).join('');
 
     const r = await this.get(`/api/success-rate${productId?'?product_id='+productId:''}`);
     const items = r.data || [];
@@ -616,7 +628,7 @@ const app = {
         const barColor = pct>=80?'#16A34A':pct>=50?'#2563EB':pct>=1?'#D97706':'#DC2626';
         return `
           <tr>
-            <td>${item.品号} ${item.品名}</td>
+            <td>${this.escapeHtml(item.品号)} ${this.escapeHtml(item.品名)}</td>
             <td><span class="hash">${item.配方hash.substring(0,8)}…${item.配方hash.slice(-4)}</span></td>
             <td>${item.试验次数}</td>
             <td>${item.成功次数}</td>

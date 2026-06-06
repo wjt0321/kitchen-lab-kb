@@ -95,8 +95,8 @@ async def api_me(request: Request):
 async def api_products(
     q: str = "",
     status: str = "active",
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=1000),
 ):
     offset = (page - 1) * page_size
     params: List = []
@@ -208,18 +208,22 @@ async def api_product_update(product_id: int, request: Request):
 @app.post("/api/products/{product_id}/archive")
 async def api_product_archive(product_id: int):
     conn = get_db()
-    conn.execute("UPDATE products SET 状态='archived', updated_at=CURRENT_TIMESTAMP WHERE id=?", (product_id,))
+    cur = conn.execute("UPDATE products SET 状态='archived', updated_at=CURRENT_TIMESTAMP WHERE id=?", (product_id,))
     conn.commit()
     conn.close()
+    if cur.rowcount == 0:
+        return fail("产品不存在", 404)
     return ok()
 
 
 @app.post("/api/products/{product_id}/restore")
 async def api_product_restore(product_id: int):
     conn = get_db()
-    conn.execute("UPDATE products SET 状态='active', updated_at=CURRENT_TIMESTAMP WHERE id=?", (product_id,))
+    cur = conn.execute("UPDATE products SET 状态='active', updated_at=CURRENT_TIMESTAMP WHERE id=?", (product_id,))
     conn.commit()
     conn.close()
+    if cur.rowcount == 0:
+        return fail("产品不存在", 404)
     return ok()
 
 
@@ -232,10 +236,6 @@ async def api_product_delete(product_id: int):
         return fail("只能删除已归档产品")
 
     conn = get_db()
-    recipe_rows = conn.execute("SELECT id FROM recipes WHERE 产品id = ?", (product_id,)).fetchall()
-    for recipe in recipe_rows:
-        conn.execute("DELETE FROM recipe_materials WHERE 配方id = ?", (recipe["id"],))
-    conn.execute("DELETE FROM recipes WHERE 产品id = ?", (product_id,))
     conn.execute("DELETE FROM products WHERE id = ?", (product_id,))
     conn.commit()
     conn.close()
@@ -252,8 +252,8 @@ async def api_recipes(
     status: str = "",
     date_from: str = "",
     date_to: str = "",
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=1000),
 ):
     offset = (page - 1) * page_size
     params: List = []
@@ -586,7 +586,10 @@ def _mime_type(path: str) -> str:
 
 @app.get("/static/{path:path}")
 async def static_files(path: str):
-    file_path = os.path.join(STATIC_DIR, path)
+    static_root = os.path.abspath(STATIC_DIR)
+    file_path = os.path.abspath(os.path.join(STATIC_DIR, path))
+    if file_path != static_root and not file_path.startswith(static_root + os.sep):
+        return fail("Not found", 404)
     if os.path.exists(file_path) and os.path.isfile(file_path):
         with open(file_path, "rb") as f:
             content = f.read()

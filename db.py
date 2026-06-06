@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS recipes (
     备注            TEXT,
     created_by      TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (产品id) REFERENCES products(id)
+    FOREIGN KEY (产品id) REFERENCES products(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS recipe_materials (
@@ -96,9 +96,58 @@ def init_db() -> None:
     """Create tables, indexes and views if they don't exist."""
     conn = get_db()
     conn.executescript(SCHEMA_SQL)
+    _ensure_recipe_product_cascade(conn)
     conn.executescript(VIEW_SQL)
     conn.commit()
     conn.close()
+
+
+def _ensure_recipe_product_cascade(conn: sqlite3.Connection) -> None:
+    """Rebuild recipes once if its product FK was created without cascade."""
+    fk_rows = conn.execute("PRAGMA foreign_key_list(recipes)").fetchall()
+    product_fk = next((row for row in fk_rows if row["table"] == "products"), None)
+    if not product_fk or product_fk["on_delete"].upper() == "CASCADE":
+        return
+
+    conn.execute("DROP VIEW IF EXISTS v_recipe_success_rate")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        """
+        ALTER TABLE recipes RENAME TO recipes_old;
+
+        CREATE TABLE recipes (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            产品id          INTEGER NOT NULL,
+            试验日期        DATE NOT NULL,
+            配方名称        TEXT,
+            配方hash        TEXT NOT NULL,
+            状态            TEXT NOT NULL,
+            用了多少        INTEGER,
+            备注            TEXT,
+            created_by      TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (产品id) REFERENCES products(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO recipes (
+            id, 产品id, 试验日期, 配方名称, 配方hash, 状态, 用了多少, 备注, created_by, created_at
+        )
+        SELECT
+            id, 产品id, 试验日期, 配方名称, 配方hash, 状态, 用了多少, 备注, created_by, created_at
+        FROM recipes_old;
+
+        DROP TABLE recipes_old;
+        """
+    )
+    conn.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_recipes_产品id ON recipes(产品id);
+        CREATE INDEX IF NOT EXISTS idx_recipes_配方hash ON recipes(配方hash);
+        CREATE INDEX IF NOT EXISTS idx_recipes_状态 ON recipes(状态);
+        CREATE INDEX IF NOT EXISTS idx_recipes_试验日期 ON recipes(试验日期);
+        """
+    )
+    conn.execute("PRAGMA foreign_keys = ON")
 
 
 def db_execute(sql: str, params: tuple = ()) -> sqlite3.Cursor:
