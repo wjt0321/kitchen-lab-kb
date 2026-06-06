@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>样品库知识库</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="topbar" id="topbar">
+  <div class="topbar-left">
+    <span class="topbar-brand">样品库知识库</span>
+    <nav class="topbar-nav" id="topbar-nav">
+      <a href="#/products">产品</a>
+      <a href="#/success-rate">成功率查询</a>
+    </nav>
+  </div>
+  <div class="topbar-right">
+    <span id="current-user" style="color:var(--text-sub);font-size:13px;"></span>
+    <button class="btn btn-secondary" onclick="app.backup()">备份</button>
+    <div style="position:relative;display:inline-block;">
+      <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
+      <div id="export-menu" class="hide" style="position:absolute;right:0;top:38px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 4px 12px rgba(0,0,0,0.08);min-width:140px;z-index:50;">
+        <div style="padding:6px 0;">
+          <a href="javascript:app.exportExcel('products')" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出产品列表</a>
+          <a href="javascript:app.exportExcel('recipes')" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出配方记录</a>
+          <a href="javascript:app.exportExcel('success_rate')" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出成功率</a>
+          <a href="javascript:app.exportJson()" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出 JSON</a>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-text" onclick="app.logout()">退出</button>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+<div id="modal-container"></div>
+<div id="app" class="container"></div>
+
+<script src="/static/app.js"></script>
+<script>
+// Initialize app after DOM ready
+document.addEventListener('DOMContentLoaded', function() {
+  app.init();
+});
+</script>
+</body>
+</html>
