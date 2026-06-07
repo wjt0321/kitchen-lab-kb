@@ -104,6 +104,8 @@ def check_legacy_recipe_fk_migration():
         conn = sqlite3.connect(db_path)
         fk_rows = conn.execute("PRAGMA foreign_key_list(recipes)").fetchall()
         product_fk = next(row for row in fk_rows if row[2] == "products")
+        material_fk_rows = conn.execute("PRAGMA foreign_key_list(recipe_materials)").fetchall()
+        material_recipe_fk = next(row for row in material_fk_rows if row[3] == "配方id")
         view_sql = conn.execute(
             "SELECT sql FROM sqlite_master WHERE type='view' AND name='v_recipe_success_rate'"
         ).fetchone()[0]
@@ -113,11 +115,79 @@ def check_legacy_recipe_fk_migration():
         tmpdir.cleanup()
 
     assert product_fk[6] == "CASCADE", "legacy recipe product FK should migrate to cascade"
+    assert material_recipe_fk[2] == "recipes", "material FK should point at recipes after migration"
     assert "recipes_old" not in view_sql, "success-rate view should point at recipes"
+
+
+def check_broken_success_rate_view_rebuild():
+    tmpdir = tempfile.TemporaryDirectory()
+    db_path = os.path.join(tmpdir.name, "broken_view.db")
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.executescript(
+            """
+            CREATE TABLE products (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                品号 TEXT NOT NULL UNIQUE,
+                规格 TEXT NOT NULL,
+                品名 TEXT NOT NULL,
+                当前数量 INTEGER DEFAULT 0,
+                备注 TEXT,
+                状态 TEXT DEFAULT 'active',
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE TABLE recipes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                产品id INTEGER NOT NULL,
+                试验日期 DATE NOT NULL,
+                配方名称 TEXT,
+                配方hash TEXT NOT NULL,
+                状态 TEXT NOT NULL,
+                用了多少 INTEGER,
+                备注 TEXT,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (产品id) REFERENCES products(id) ON DELETE CASCADE
+            );
+            CREATE TABLE recipe_materials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                配方id INTEGER NOT NULL,
+                类型 TEXT NOT NULL,
+                名称 TEXT NOT NULL,
+                用量 REAL NOT NULL,
+                单位 TEXT,
+                排序 INTEGER DEFAULT 0,
+                FOREIGN KEY (配方id) REFERENCES recipes(id) ON DELETE CASCADE
+            );
+            CREATE VIEW v_recipe_success_rate AS
+            SELECT 产品id, 配方hash, COUNT(*) AS 试验次数, 0 AS 成功次数, 0 AS 成功率
+            FROM recipes_old
+            GROUP BY 产品id, 配方hash;
+            """
+        )
+        conn.close()
+
+        db_module.DB_PATH = db_path
+        app_module.DB_PATH = db_path
+        db_module.init_db()
+
+        conn = sqlite3.connect(db_path)
+        view_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='view' AND name='v_recipe_success_rate'"
+        ).fetchone()[0]
+        conn.execute("SELECT * FROM v_recipe_success_rate").fetchall()
+    finally:
+        conn.close()
+        tmpdir.cleanup()
+
+    assert "recipes_old" not in view_sql, "broken success-rate view should be rebuilt"
 
 
 def main():
     check_legacy_recipe_fk_migration()
+    check_broken_success_rate_view_rebuild()
 
     tmpdir = use_temp_db()
     try:

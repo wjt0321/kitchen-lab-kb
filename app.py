@@ -17,8 +17,11 @@ from db import (
 from auth import login_user, logout_user, get_current_user
 from backup import do_backup
 from export import export_excel, export_json
+from import_data import import_base64
+from shutdown import request_shutdown
 
 app = FastAPI(title="样品库知识库")
+SHUTDOWN_HANDLER = request_shutdown
 
 app.add_middleware(
     CORSMiddleware,
@@ -252,6 +255,10 @@ async def api_recipes(
     status: str = "",
     date_from: str = "",
     date_to: str = "",
+    min_rate: Optional[float] = Query(None, ge=0, le=1),
+    max_rate: Optional[float] = Query(None, ge=0, le=1),
+    sort: str = "",
+    order: str = "desc",
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=1000),
 ):
@@ -271,21 +278,38 @@ async def api_recipes(
     if date_to:
         where_parts.append("r.试验日期 <= ?")
         params.append(date_to)
+    if min_rate is not None:
+        where_parts.append("v.成功率 >= ?")
+        params.append(min_rate)
+    if max_rate is not None:
+        where_parts.append("v.成功率 <= ?")
+        params.append(max_rate)
 
     where_sql = " AND ".join(where_parts)
+    order_sql = _recipe_order_sql(sort, order)
 
     count_row = db_query_one(
-        f"SELECT COUNT(*) AS cnt FROM recipes r WHERE {where_sql}", tuple(params)
+        f"""
+        SELECT COUNT(*) AS cnt
+        FROM recipes r
+        JOIN products p ON r.产品id = p.id
+        LEFT JOIN v_recipe_success_rate v
+          ON v.产品id = r.产品id AND v.配方hash = r.配方hash
+        WHERE {where_sql}
+        """,
+        tuple(params),
     )
     total = count_row["cnt"] if count_row else 0
 
     rows = db_query(
         f"""
-        SELECT r.*, p.品号, p.品名
+        SELECT r.*, p.品号, p.品名, v.试验次数, v.成功次数, v.成功率
         FROM recipes r
         JOIN products p ON r.产品id = p.id
+        LEFT JOIN v_recipe_success_rate v
+          ON v.产品id = r.产品id AND v.配方hash = r.配方hash
         WHERE {where_sql}
-        ORDER BY r.试验日期 DESC, r.id DESC
+        ORDER BY {order_sql}
         LIMIT ? OFFSET ?
         """,
         tuple(params + [page_size, offset]),
@@ -357,6 +381,24 @@ async def api_recipe_detail(recipe_id: int):
     data = dict(row)
     data["原料辅料"] = get_recipe_materials(recipe_id)
     return ok(data)
+
+
+@app.get("/api/recipes/{recipe_id}/same-hash")
+async def api_recipe_same_hash(recipe_id: int):
+    row = db_query_one("SELECT 产品id, 配方hash FROM recipes WHERE id = ?", (recipe_id,))
+    if not row:
+        return fail("配方记录不存在", 404)
+    rows = db_query(
+        """
+        SELECT r.*, p.品号, p.品名
+        FROM recipes r
+        JOIN products p ON r.产品id = p.id
+        WHERE r.产品id = ? AND r.配方hash = ?
+        ORDER BY r.试验日期 DESC, r.id DESC
+        """,
+        (row["产品id"], row["配方hash"]),
+    )
+    return ok([dict(r) for r in rows])
 
 
 @app.put("/api/recipes/{recipe_id}")
@@ -441,15 +483,40 @@ def _clean_materials(materials: List[dict]):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/products/{product_id}/success-rate")
-async def api_product_success_rate(product_id: int):
+async def api_product_success_rate(
+    product_id: int,
+    date_from: str = "",
+    date_to: str = "",
+    status: str = "",
+    min_rate: Optional[float] = Query(None, ge=0, le=1),
+    max_rate: Optional[float] = Query(None, ge=0, le=1),
+    sort: str = "成功率",
+    order: str = "desc",
+):
+    rows = _success_rate_rows(
+        product_id=product_id,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        min_rate=min_rate,
+        max_rate=max_rate,
+        sort=sort,
+        order=order,
+    )
+    return ok([dict(r) for r in rows])
+
+
+@app.get("/api/products/{product_id}/recipes-by-hash/{recipe_hash_value}")
+async def api_product_recipes_by_hash(product_id: int, recipe_hash_value: str):
     rows = db_query(
         """
-        SELECT 配方hash, 试验次数, 成功次数, 成功率
-        FROM v_recipe_success_rate
-        WHERE 产品id = ?
-        ORDER BY 成功率 DESC, 试验次数 DESC
+        SELECT r.*, p.品号, p.品名
+        FROM recipes r
+        JOIN products p ON r.产品id = p.id
+        WHERE r.产品id = ? AND r.配方hash = ?
+        ORDER BY r.试验日期 DESC, r.id DESC
         """,
-        (product_id,),
+        (product_id, recipe_hash_value),
     )
     return ok([dict(r) for r in rows])
 
@@ -457,29 +524,124 @@ async def api_product_success_rate(product_id: int):
 @app.get("/api/success-rate")
 async def api_global_success_rate(
     product_id: Optional[int] = None,
+    date_from: str = "",
+    date_to: str = "",
+    status: str = "",
+    min_rate: Optional[float] = Query(None, ge=0, le=1),
+    max_rate: Optional[float] = Query(None, ge=0, le=1),
+    sort: str = "成功率",
+    order: str = "desc",
 ):
-    params: List = []
-    where_parts = ["1=1"]
-    if product_id:
-        where_parts.append("v.产品id = ?")
-        params.append(product_id)
-
-    where_sql = " AND ".join(where_parts)
-    rows = db_query(
-        f"""
-        SELECT v.*, p.品号, p.品名
-        FROM v_recipe_success_rate v
-        JOIN products p ON v.产品id = p.id
-        WHERE {where_sql}
-        ORDER BY v.成功率 DESC, v.试验次数 DESC
-        """,
-        tuple(params),
+    rows = _success_rate_rows(
+        product_id=product_id,
+        date_from=date_from,
+        date_to=date_to,
+        status=status,
+        min_rate=min_rate,
+        max_rate=max_rate,
+        sort=sort,
+        order=order,
     )
     return ok([dict(r) for r in rows])
 
 
+def _recipe_order_sql(sort: str, order: str) -> str:
+    direction = "ASC" if order.lower() == "asc" else "DESC"
+    sort_map = {
+        "品号": "p.品号",
+        "创建时间": "r.created_at",
+        "created_at": "r.created_at",
+        "成功率": "v.成功率",
+        "试验日期": "r.试验日期",
+    }
+    column = sort_map.get(sort, "r.试验日期")
+    if column == "v.成功率":
+        return f"v.成功率 {direction}, r.试验日期 DESC, r.id DESC"
+    return f"{column} {direction}, r.id DESC"
+
+
+def _success_rate_order_sql(sort: str, order: str) -> str:
+    direction = "ASC" if order.lower() == "asc" else "DESC"
+    sort_map = {
+        "品号": "p.品号",
+        "成功率": "s.成功率",
+        "试验次数": "s.试验次数",
+        "成功次数": "s.成功次数",
+        "创建时间": "s.最近创建时间",
+        "created_at": "s.最近创建时间",
+    }
+    column = sort_map.get(sort, "s.成功率")
+    if column == "p.品号":
+        return f"{column} {direction}, s.成功率 DESC, s.试验次数 DESC"
+    return f"{column} {direction}, s.试验次数 DESC, p.品号 ASC"
+
+
+def _success_rate_rows(
+    product_id: Optional[int] = None,
+    date_from: str = "",
+    date_to: str = "",
+    status: str = "",
+    min_rate: Optional[float] = None,
+    max_rate: Optional[float] = None,
+    sort: str = "成功率",
+    order: str = "desc",
+):
+    params: List = []
+    where_parts = ["r.状态 IN ('success', 'failed')"]
+    if product_id:
+        where_parts.append("r.产品id = ?")
+        params.append(product_id)
+    if date_from:
+        where_parts.append("r.试验日期 >= ?")
+        params.append(date_from)
+    if date_to:
+        where_parts.append("r.试验日期 <= ?")
+        params.append(date_to)
+    status_values = [s.strip() for s in status.split(",") if s.strip()]
+    if status_values and "全部" not in status_values:
+        valid_values = [s for s in status_values if s in ("success", "failed")]
+        if valid_values:
+            placeholders = ",".join("?" for _ in valid_values)
+            where_parts.append(f"r.状态 IN ({placeholders})")
+            params.extend(valid_values)
+
+    having_parts = []
+    if min_rate is not None:
+        having_parts.append("成功率 >= ?")
+        params.append(min_rate)
+    if max_rate is not None:
+        having_parts.append("成功率 <= ?")
+        params.append(max_rate)
+
+    having_sql = f"HAVING {' AND '.join(having_parts)}" if having_parts else ""
+    where_sql = " AND ".join(where_parts)
+    order_sql = _success_rate_order_sql(sort, order)
+
+    return db_query(
+        f"""
+        SELECT s.*, p.品号, p.品名
+        FROM (
+            SELECT
+                r.产品id,
+                r.配方hash,
+                COUNT(*) AS 试验次数,
+                SUM(CASE WHEN r.状态='success' THEN 1 ELSE 0 END) AS 成功次数,
+                ROUND(SUM(CASE WHEN r.状态='success' THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS 成功率,
+                MAX(r.created_at) AS 最近创建时间
+            FROM recipes r
+            WHERE {where_sql}
+            GROUP BY r.产品id, r.配方hash
+            {having_sql}
+        ) s
+        JOIN products p ON p.id = s.产品id
+        ORDER BY {order_sql}
+        """,
+        tuple(params),
+    )
+
+
 # ---------------------------------------------------------------------------
-# Backup / Export APIs
+# Backup / Export / Import / Shutdown APIs
 # ---------------------------------------------------------------------------
 
 @app.post("/api/backup")
@@ -507,6 +669,36 @@ async def api_export_json():
         return FileResponse(path, filename=os.path.basename(path))
     except Exception as e:
         return fail(f"导出失败: {e}")
+
+
+@app.post("/api/import")
+async def api_import(request: Request):
+    try:
+        body = await request.json()
+        filename = body.get("filename", "")
+        content_base64 = body.get("content_base64", "")
+        result = import_base64(filename, content_base64)
+        return ok(result)
+    except Exception as e:
+        return fail(f"导入失败: {e}")
+
+
+@app.post("/api/shutdown")
+async def api_shutdown():
+    backup_name = None
+    backup_error = None
+    try:
+        backup_path = do_backup()
+        backup_name = os.path.basename(backup_path)
+    except Exception as e:
+        backup_error = str(e)
+
+    try:
+        SHUTDOWN_HANDLER()
+    except Exception as e:
+        return fail(f"退出调度失败: {e}")
+
+    return ok({"backup": backup_name, "backup_error": backup_error})
 
 
 # ---------------------------------------------------------------------------

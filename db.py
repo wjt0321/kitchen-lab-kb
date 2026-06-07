@@ -97,6 +97,8 @@ def init_db() -> None:
     conn = get_db()
     conn.executescript(SCHEMA_SQL)
     _ensure_recipe_product_cascade(conn)
+    _ensure_material_recipe_fk(conn)
+    _ensure_success_rate_view(conn)
     conn.executescript(VIEW_SQL)
     conn.commit()
     conn.close()
@@ -148,6 +150,59 @@ def _ensure_recipe_product_cascade(conn: sqlite3.Connection) -> None:
         """
     )
     conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _ensure_material_recipe_fk(conn: sqlite3.Connection) -> None:
+    """Rebuild materials if a legacy rename left its FK pointing at recipes_old."""
+    fk_rows = conn.execute("PRAGMA foreign_key_list(recipe_materials)").fetchall()
+    recipe_fk = next((row for row in fk_rows if row["from"] == "配方id"), None)
+    if recipe_fk and recipe_fk["table"] == "recipes" and recipe_fk["on_delete"].upper() == "CASCADE":
+        return
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        """
+        CREATE TABLE recipe_materials_new (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            配方id          INTEGER NOT NULL,
+            类型            TEXT NOT NULL,
+            名称            TEXT NOT NULL,
+            用量            REAL NOT NULL,
+            单位            TEXT,
+            排序            INTEGER DEFAULT 0,
+            FOREIGN KEY (配方id) REFERENCES recipes(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO recipe_materials_new (id, 配方id, 类型, 名称, 用量, 单位, 排序)
+        SELECT id, 配方id, 类型, 名称, 用量, 单位, 排序
+        FROM recipe_materials;
+
+        DROP TABLE recipe_materials;
+        ALTER TABLE recipe_materials_new RENAME TO recipe_materials;
+        CREATE INDEX IF NOT EXISTS idx_materials_配方id ON recipe_materials(配方id);
+        """
+    )
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _ensure_success_rate_view(conn: sqlite3.Connection) -> None:
+    """Drop stale/broken success-rate view so VIEW_SQL can recreate it."""
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='view' AND name='v_recipe_success_rate'"
+    ).fetchone()
+    if not row:
+        return
+
+    view_sql = row["sql"] or ""
+    should_rebuild = "recipes_old" in view_sql
+    if not should_rebuild:
+        try:
+            conn.execute("SELECT * FROM v_recipe_success_rate LIMIT 1").fetchall()
+        except sqlite3.DatabaseError:
+            should_rebuild = True
+
+    if should_rebuild:
+        conn.execute("DROP VIEW IF EXISTS v_recipe_success_rate")
 
 
 def db_execute(sql: str, params: tuple = ()) -> sqlite3.Cursor:

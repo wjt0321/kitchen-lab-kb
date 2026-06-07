@@ -1,6 +1,7 @@
 """Excel / JSON export utilities."""
 import os
 import json
+import shutil
 from datetime import datetime
 
 from openpyxl import Workbook
@@ -9,10 +10,46 @@ from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 from db import db_query
 
 EXPORT_DIR = os.path.join(os.path.dirname(__file__), "exports")
+LATEST_DIR_NAME = "_latest"
+LEGACY_DIR_NAME = "_历史散文件"
+EXPORT_FOLDERS = {
+    "products": ("产品列表", "产品列表_最新.xlsx"),
+    "recipes": ("配方记录", "配方记录_最新.xlsx"),
+    "success_rate": ("成功率", "成功率_最新.xlsx"),
+    "json": ("JSON数据", "JSON数据_最新.json"),
+}
+LEGACY_PREFIXES = ("products_", "recipes_", "success_rate_", "export_")
 
 
 def _ensure_dir():
     os.makedirs(EXPORT_DIR, exist_ok=True)
+    os.makedirs(os.path.join(EXPORT_DIR, LATEST_DIR_NAME), exist_ok=True)
+    _move_legacy_flat_exports()
+
+
+def _move_legacy_flat_exports():
+    legacy_dir = os.path.join(EXPORT_DIR, LEGACY_DIR_NAME)
+    for name in os.listdir(EXPORT_DIR):
+        path = os.path.join(EXPORT_DIR, name)
+        if not os.path.isfile(path):
+            continue
+        if not name.startswith(LEGACY_PREFIXES):
+            continue
+        os.makedirs(legacy_dir, exist_ok=True)
+        shutil.move(path, os.path.join(legacy_dir, name))
+
+
+def _export_path(export_key: str, filename: str) -> str:
+    folder_name, _ = EXPORT_FOLDERS[export_key]
+    folder = os.path.join(EXPORT_DIR, folder_name)
+    os.makedirs(folder, exist_ok=True)
+    return os.path.join(folder, filename)
+
+
+def _copy_latest(path: str, export_key: str) -> None:
+    _, latest_name = EXPORT_FOLDERS[export_key]
+    latest_path = os.path.join(EXPORT_DIR, LATEST_DIR_NAME, latest_name)
+    shutil.copy2(path, latest_path)
 
 
 def _now_str() -> str:
@@ -44,20 +81,22 @@ def export_excel(export_type: str) -> str:
             for cidx, key in enumerate(["品号", "规格", "品名", "当前数量", "状态", "created_at"], 1):
                 ws.cell(row=ridx, column=cidx, value=row[key])
         filename = f"products_{now}.xlsx"
+        export_key = "products"
 
     elif export_type == "recipes":
         ws.title = "配方记录"
-        _set_header(ws, ["产品品号", "产品品名", "试验日期", "配方名称", "状态", "用了多少", "备注", "创建时间"])
+        _set_header(ws, ["产品id", "产品品号", "产品品名", "试验日期", "配方名称", "状态", "用了多少", "备注", "创建时间"])
         rows = db_query("""
-            SELECT p.品号, p.品名, r.试验日期, r.配方名称, r.状态, r.用了多少, r.备注, r.created_at
+            SELECT r.产品id, p.品号, p.品名, r.试验日期, r.配方名称, r.状态, r.用了多少, r.备注, r.created_at
             FROM recipes r
             JOIN products p ON r.产品id = p.id
             ORDER BY r.试验日期 DESC
         """)
         for ridx, row in enumerate(rows, 2):
-            for cidx, key in enumerate(["品号", "品名", "试验日期", "配方名称", "状态", "用了多少", "备注", "created_at"], 1):
+            for cidx, key in enumerate(["产品id", "品号", "品名", "试验日期", "配方名称", "状态", "用了多少", "备注", "created_at"], 1):
                 ws.cell(row=ridx, column=cidx, value=row[key])
         filename = f"recipes_{now}.xlsx"
+        export_key = "recipes"
 
     elif export_type == "success_rate":
         ws.title = "成功率汇总"
@@ -72,11 +111,13 @@ def export_excel(export_type: str) -> str:
             for cidx, key in enumerate(["品号", "品名", "配方hash", "试验次数", "成功次数", "成功率"], 1):
                 ws.cell(row=ridx, column=cidx, value=row[key])
         filename = f"success_rate_{now}.xlsx"
+        export_key = "success_rate"
     else:
         raise ValueError(f"Unknown export type: {export_type}")
 
-    path = os.path.join(EXPORT_DIR, filename)
+    path = _export_path(export_key, filename)
     wb.save(path)
+    _copy_latest(path, export_key)
     return path
 
 
@@ -90,7 +131,8 @@ def export_json() -> str:
         "materials": [dict(r) for r in db_query("SELECT * FROM recipe_materials ORDER BY id")],
     }
     filename = f"export_{now}.json"
-    path = os.path.join(EXPORT_DIR, filename)
+    path = _export_path("json", filename)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    _copy_latest(path, "json")
     return path

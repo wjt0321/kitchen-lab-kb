@@ -5,7 +5,8 @@ const app = {
 
   init() {
     this.user = localStorage.getItem('username') || '';
-    if (!this.user && location.hash !== '#/login') {
+    const route = this.routeFromLocation();
+    if (!this.user && route.path !== '/login') {
       location.hash = '#/login';
     }
     this.updateTopbar();
@@ -20,22 +21,30 @@ const app = {
   },
 
   updateTopbar() {
+    const route = this.routeFromLocation();
     const el = document.getElementById('current-user');
     if (el) el.textContent = this.user || '';
     const nav = document.getElementById('topbar-nav');
     if (nav) {
       nav.querySelectorAll('a').forEach(a => {
-        a.classList.toggle('active', location.hash.includes(a.getAttribute('href').replace('#', '')));
+        a.classList.toggle('active', route.path.startsWith(a.getAttribute('href').replace('#', '')));
       });
     }
     const bar = document.getElementById('topbar');
-    if (bar) bar.style.display = location.hash === '#/login' ? 'none' : 'flex';
+    if (bar) bar.style.display = route.path === '/login' ? 'none' : 'flex';
+  },
+
+  routeFromLocation() {
+    if (location.hash && location.hash.startsWith('#/')) {
+      const [path, query] = location.hash.substring(1).split('?');
+      return { path, params: new URLSearchParams(query || '') };
+    }
+    const path = location.pathname === '/' ? '/products' : location.pathname;
+    return { path, params: new URLSearchParams(location.search || '') };
   },
 
   route() {
-    const hash = location.hash || '#/products';
-    const [path, query] = hash.substring(1).split('?');
-    const params = new URLSearchParams(query || '');
+    const { path, params } = this.routeFromLocation();
     this.currentPage = path;
     this.updateTopbar();
 
@@ -48,7 +57,7 @@ const app = {
     if (path === '/products') this.renderProducts(appEl, params);
     else if (path === '/products/new') this.renderProductForm(appEl, null);
     else if (path.match(/^\/products\/\d+\/edit$/)) this.renderProductForm(appEl, parseInt(path.split('/')[2]));
-    else if (path.match(/^\/products\/\d+$/)) this.renderProductDetail(appEl, parseInt(path.split('/')[2]));
+    else if (path.match(/^\/products\/\d+$/)) this.renderProductDetail(appEl, parseInt(path.split('/')[2]), params);
     else if (path === '/recipes/new') this.renderRecipeForm(appEl, null, params.get('product_id'));
     else if (path.match(/^\/recipes\/\d+\/edit$/)) this.renderRecipeForm(appEl, parseInt(path.split('/')[2]));
     else if (path.match(/^\/recipes\/\d+$/)) this.renderRecipeDetail(appEl, parseInt(path.split('/')[2]));
@@ -106,6 +115,21 @@ const app = {
     const map = { active: ['活跃','badge-active'], archived: ['已归档','badge-archived'], success: ['成功','badge-success'], failed: ['失败','badge-failed'], pending: ['待观察','badge-pending'] };
     const [text, cls] = map[s] || [s,''];
     return `<span class="badge ${cls}">${this.escapeHtml(text)}</span>`;
+  },
+
+  successRateHelp() {
+    return '<p style="margin:0 0 12px;color:var(--text-sub);font-size:13px;">成功率 = 同一配方组合下成功次数 / 成功或失败试验次数。只有 2 次及以上同组合试验才显示百分比,单次试验标记为样本不足。</p>';
+  },
+
+  formatSuccessRate(item) {
+    if (!item || item.成功率 == null || !item.试验次数) return '-';
+    const trials = Number(item.试验次数 || 0);
+    if (trials < 2) {
+      return `<span style="font-weight:600;color:var(--warning);">样本不足</span><span style="color:var(--text-weak);font-size:12px;margin-left:6px;">${trials} 次试验</span>`;
+    }
+    const pct = Math.round((item.成功率 || 0) * 100);
+    const barColor = pct>=80?'#16A34A':pct>=50?'#2563EB':pct>=1?'#D97706':'#DC2626';
+    return `<span style="font-weight:600;">${pct}%</span><span class="progress-bar"><span class="progress-bar-inner" style="width:${pct}%;background:${barColor};"></span></span>`;
   },
 
   formatDate(d) {
@@ -190,7 +214,13 @@ const app = {
           <td>${this.formatDate(p.created_at)}</td>
           <td>
             <a href="#/products/${p.id}" onclick="event.stopPropagation()">查看</a>
-            ${p.状态==='active'?`<a href="#/products/${p.id}/edit" onclick="event.stopPropagation()" style="margin-left:8px;">编辑</a>`:''}
+            ${p.状态==='active'?`
+              <a href="#/products/${p.id}/edit" onclick="event.stopPropagation()" style="margin-left:8px;">编辑</a>
+              <button class="btn btn-text" onclick="event.stopPropagation();app.archiveProduct(${p.id})" style="margin-left:8px;color:var(--danger);">归档</button>
+            `:`
+              <button class="btn btn-text" onclick="event.stopPropagation();app.restoreProduct(${p.id})" style="margin-left:8px;">恢复</button>
+              <button class="btn btn-text" onclick="event.stopPropagation();app.deleteProduct(${p.id})" style="margin-left:8px;color:var(--danger);">删除</button>
+            `}
           </td>
         </tr>
       `).join('');
@@ -297,12 +327,11 @@ const app = {
     }
   },
 
-  async renderProductDetail(el, id) {
+  async renderProductDetail(el, id, params = new URLSearchParams()) {
     const r = await this.get(`/api/products/${id}`);
     if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>产品不存在</h3></div>'; return; }
     const p = r.data;
-    const hash = location.hash;
-    const showTab = hash.includes('tab=success') ? 'success' : 'recipes';
+    const showTab = params.get('tab') === 'success' ? 'success' : 'recipes';
 
     el.innerHTML = `
       <div class="breadcrumb"><a href="#/products">产品列表</a> / ${this.escapeHtml(p.品号)}</div>
@@ -334,20 +363,61 @@ const app = {
       <div id="product-tab-content"></div>`;
 
     if (showTab === 'recipes') {
-      await this.renderProductRecipes(id);
+      await this.renderProductRecipes(id, params);
     } else {
-      await this.renderProductSuccess(id);
+      await this.renderProductSuccess(id, params);
     }
   },
 
-  async renderProductRecipes(productId) {
-    const r = await this.get(`/api/recipes?product_id=${productId}`);
+  async renderProductRecipes(productId, params = new URLSearchParams()) {
+    const status = params.get('status') || '';
+    const dateFrom = params.get('date_from') || '';
+    const dateTo = params.get('date_to') || '';
+    const minRate = params.get('min_rate') || '';
+    const maxRate = params.get('max_rate') || '';
+    const sort = params.get('sort') || '试验日期';
+    const order = params.get('order') || 'desc';
+    const query = new URLSearchParams({ product_id: productId });
+    if (status) query.set('status', status);
+    if (dateFrom) query.set('date_from', dateFrom);
+    if (dateTo) query.set('date_to', dateTo);
+    if (minRate) query.set('min_rate', minRate);
+    if (maxRate) query.set('max_rate', maxRate);
+    if (sort) query.set('sort', sort);
+    if (order) query.set('order', order);
+    const r = await this.get(`/api/recipes?${query.toString()}`);
     const box = document.getElementById('product-tab-content');
     if (!r.ok || !box) return;
     const items = r.data.items || [];
 
+    const filters = `
+      <div class="filter-bar">
+        <select class="input" id="prod-rec-status">
+          <option value="" ${status===''?'selected':''}>全部状态</option>
+          <option value="success" ${status==='success'?'selected':''}>成功</option>
+          <option value="failed" ${status==='failed'?'selected':''}>失败</option>
+          <option value="pending" ${status==='pending'?'selected':''}>待观察</option>
+        </select>
+        <input class="input" id="prod-rec-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
+        <input class="input" id="prod-rec-date-to" type="date" value="${this.escapeHtml(dateTo)}">
+        <input class="input" id="prod-rec-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}" style="width:90px;">
+        <input class="input" id="prod-rec-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}" style="width:90px;">
+        <select class="input" id="prod-rec-sort">
+          <option value="试验日期" ${sort==='试验日期'?'selected':''}>按试验日期</option>
+          <option value="成功率" ${sort==='成功率'?'selected':''}>按成功率</option>
+          <option value="创建时间" ${sort==='创建时间'?'selected':''}>按创建时间</option>
+          <option value="品号" ${sort==='品号'?'selected':''}>按品号</option>
+        </select>
+        <select class="input" id="prod-rec-order">
+          <option value="desc" ${order==='desc'?'selected':''}>降序</option>
+          <option value="asc" ${order==='asc'?'selected':''}>升序</option>
+        </select>
+        <button class="btn btn-secondary" onclick="app.searchProductRecipes(${productId})">查询</button>
+        <button class="btn btn-secondary" onclick="location.hash='#/products/${productId}?tab=recipes'">重置</button>
+      </div>`;
+
     if (items.length === 0) {
-      box.innerHTML = `<div class="empty-state"><h3>暂无配方记录</h3><p>这个产品还没有试验记录。可以新建一条配方,记录原料、辅料和试验结果。</p><button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">+ 新建配方</button></div>`;
+      box.innerHTML = `${filters}<div class="empty-state"><h3>暂无配方记录</h3><p>这个产品还没有试验记录。可以新建一条配方,记录原料、辅料和试验结果。</p><button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">+ 新建配方</button></div>`;
       return;
     }
 
@@ -357,15 +427,36 @@ const app = {
         <td>${this.escapeHtml(item.配方名称||'-')}</td>
         <td>${this.statusBadge(item.状态)}</td>
         <td>${item.用了多少||'-'}${item.用了多少?'g':''}</td>
+        <td>${this.formatSuccessRate(item)}</td>
         <td>${this.escapeHtml(item.created_by||'-')}</td>
         <td><a href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
       </tr>
     `).join('');
 
     box.innerHTML = `
+      ${filters}
       <div class="table-wrap"><table><thead>
-        <tr><th>日期</th><th>配方名称</th><th>状态</th><th>用量</th><th>创建人</th><th>操作</th></tr>
+        <tr><th>日期</th><th>配方名称</th><th>状态</th><th>用量</th><th>成功率</th><th>创建人</th><th>操作</th></tr>
       </thead><tbody>${rows}</tbody></table></div>`;
+  },
+
+  searchProductRecipes(productId) {
+    const p = new URLSearchParams({ tab: 'recipes' });
+    const status = document.getElementById('prod-rec-status')?.value || '';
+    const dateFrom = document.getElementById('prod-rec-date-from')?.value || '';
+    const dateTo = document.getElementById('prod-rec-date-to')?.value || '';
+    const minRate = document.getElementById('prod-rec-min-rate')?.value || '';
+    const maxRate = document.getElementById('prod-rec-max-rate')?.value || '';
+    const sort = document.getElementById('prod-rec-sort')?.value || '';
+    const order = document.getElementById('prod-rec-order')?.value || '';
+    if (status) p.set('status', status);
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo) p.set('date_to', dateTo);
+    if (minRate) p.set('min_rate', (parseFloat(minRate) / 100).toString());
+    if (maxRate) p.set('max_rate', (parseFloat(maxRate) / 100).toString());
+    if (sort) p.set('sort', sort);
+    if (order) p.set('order', order);
+    location.hash = `#/products/${productId}?${p.toString()}`;
   },
 
   async renderProductSuccess(productId) {
@@ -379,26 +470,54 @@ const app = {
       return;
     }
 
-    const rows = items.map(item => {
-      const pct = Math.round((item.成功率||0)*100);
-      const barColor = pct>=80?'#16A34A':pct>=50?'#2563EB':pct>=1?'#D97706':'#DC2626';
+    const rows = items.map((item, idx) => {
+      const rowId = `hash-history-${idx}`;
       return `
         <tr>
           <td><span class="hash">${item.配方hash.substring(0,8)}…${item.配方hash.slice(-4)}</span></td>
           <td>${item.试验次数}</td>
           <td>${item.成功次数}</td>
-          <td>
-            <span style="font-weight:600;">${Math.round((item.成功率||0)*100)}%</span>
-            <span class="progress-bar"><span class="progress-bar-inner" style="width:${pct}%;background:${barColor};"></span></span>
-            ${item.试验次数<=2?'<span style="color:var(--text-weak);font-size:12px;margin-left:6px;">试验次数较少</span>':''}
-          </td>
-        </tr>`;
+          <td>${this.formatSuccessRate(item)}</td>
+          <td><button class="btn btn-text" onclick="event.stopPropagation();app.toggleHashHistory(${productId}, '${item.配方hash}', '${rowId}')">展开历史</button></td>
+        </tr>
+        <tr id="${rowId}" class="hide"><td colspan="5"><div class="empty-state" style="padding:16px;">正在加载历史记录……</div></td></tr>`;
     }).join('');
 
     box.innerHTML = `
+      ${this.successRateHelp()}
       <div class="table-wrap"><table><thead>
-        <tr><th>配方组合</th><th>试验次数</th><th>成功次数</th><th>成功率</th></tr>
+        <tr><th>配方组合</th><th>试验次数</th><th>成功次数</th><th>成功率</th><th>操作</th></tr>
       </thead><tbody>${rows}</tbody></table></div>`;
+  },
+
+  async toggleHashHistory(productId, hash, rowId) {
+    const row = document.getElementById(rowId);
+    if (!row) return;
+    row.classList.toggle('hide');
+    if (row.classList.contains('hide') || row.dataset.loaded === '1') return;
+
+    const r = await this.get(`/api/products/${productId}/recipes-by-hash/${hash}`);
+    if (!r.ok) {
+      row.innerHTML = `<td colspan="5"><div class="empty-state" style="padding:16px;"><h3>历史记录加载失败</h3></div></td>`;
+      return;
+    }
+    const items = r.data || [];
+    const rows = items.map(item => `
+      <tr onclick="location.hash='#/recipes/${item.id}'">
+        <td>${this.escapeHtml(item.试验日期)}</td>
+        <td>${this.statusBadge(item.状态)}</td>
+        <td>${this.escapeHtml(item.配方名称||'-')}</td>
+        <td>${item.用了多少||'-'}</td>
+        <td><a href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
+      </tr>
+    `).join('');
+    row.dataset.loaded = '1';
+    row.innerHTML = `
+      <td colspan="5">
+        <div class="table-wrap"><table><thead>
+          <tr><th>日期</th><th>状态</th><th>配方名称</th><th>用量</th><th>操作</th></tr>
+        </thead><tbody>${rows}</tbody></table></div>
+      </td>`;
   },
 
   archiveProduct(id) {
@@ -557,6 +676,17 @@ const app = {
 
     const sameHash = await this.get(`/api/products/${d.产品id}/success-rate`);
     const hashInfo = (sameHash.data||[]).find(x=>x.配方hash===d.配方hash);
+    const historyRes = await this.get(`/api/recipes/${d.id}/same-hash`);
+    const historyItems = historyRes.ok ? (historyRes.data || []) : [];
+    const historyRows = historyItems.map(item => `
+      <tr onclick="location.hash='#/recipes/${item.id}'">
+        <td>${this.escapeHtml(item.试验日期)}</td>
+        <td>${this.statusBadge(item.状态)}</td>
+        <td>${this.escapeHtml(item.配方名称||'-')}</td>
+        <td>${item.用了多少||'-'}</td>
+        <td><a href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
+      </tr>
+    `).join('');
 
     el.innerHTML = `
       <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${d.产品id}">${this.escapeHtml(d.品号)}</a> / ${this.escapeHtml(d.配方名称||'配方详情')}</div>
@@ -596,8 +726,11 @@ const app = {
       <div class="card">
         <h3 style="margin:0 0 12px;font-size:16px;">同组合试验记录</h3>
         <p style="margin:0 0 12px;color:var(--text-sub);font-size:13px;">
-          当前组合成功率: <strong>${Math.round((hashInfo.成功率||0)*100)}%</strong> &nbsp; 试验 ${hashInfo.试验次数} 次 / 成功 ${hashInfo.成功次数} 次
+          当前组合成功率: ${this.formatSuccessRate(hashInfo)} &nbsp; 试验 ${hashInfo.试验次数} 次 / 成功 ${hashInfo.成功次数} 次
         </p>
+        <div class="table-wrap"><table><thead>
+          <tr><th>日期</th><th>状态</th><th>配方名称</th><th>用量</th><th>操作</th></tr>
+        </thead><tbody>${historyRows}</tbody></table></div>
       </div>`:''}`;
   },
 
@@ -613,10 +746,26 @@ const app = {
   // ===== Success rate page =====
   async renderSuccessRate(el, params) {
     const productId = params.get('product_id') || '';
+    const dateFrom = params.get('date_from') || '';
+    const dateTo = params.get('date_to') || '';
+    const status = params.get('status') || '';
+    const minRate = params.get('min_rate') || '';
+    const maxRate = params.get('max_rate') || '';
+    const sort = params.get('sort') || '成功率';
+    const order = params.get('order') || 'desc';
     const prods = await this.get('/api/products?status=active&page_size=999');
     const options = `<option value="">全部产品</option>` + (prods.data?.items||[]).map(p=>`<option value="${p.id}" ${p.id==productId?'selected':''}>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</option>`).join('');
 
-    const r = await this.get(`/api/success-rate${productId?'?product_id='+productId:''}`);
+    const query = new URLSearchParams();
+    if (productId) query.set('product_id', productId);
+    if (dateFrom) query.set('date_from', dateFrom);
+    if (dateTo) query.set('date_to', dateTo);
+    if (status) query.set('status', status);
+    if (minRate) query.set('min_rate', minRate);
+    if (maxRate) query.set('max_rate', maxRate);
+    if (sort) query.set('sort', sort);
+    if (order) query.set('order', order);
+    const r = await this.get(`/api/success-rate${query.toString()?'?'+query.toString():''}`);
     const items = r.data || [];
 
     let rows = '';
@@ -624,18 +773,13 @@ const app = {
       rows = `<tr><td colspan="6"><div class="empty-state"><h3>暂无成功率数据</h3><p>至少需要一条"成功"或"失败"的配方记录,才能计算成功率。待观察状态不会参与成功率计算。</p></div></td></tr>`;
     } else {
       rows = items.map(item => {
-        const pct = Math.round((item.成功率||0)*100);
-        const barColor = pct>=80?'#16A34A':pct>=50?'#2563EB':pct>=1?'#D97706':'#DC2626';
         return `
           <tr>
             <td>${this.escapeHtml(item.品号)} ${this.escapeHtml(item.品名)}</td>
             <td><span class="hash">${item.配方hash.substring(0,8)}…${item.配方hash.slice(-4)}</span></td>
             <td>${item.试验次数}</td>
             <td>${item.成功次数}</td>
-            <td>
-              <span style="font-weight:600;">${pct}%</span>
-              <span class="progress-bar"><span class="progress-bar-inner" style="width:${pct}%;background:${barColor};"></span></span>
-            </td>
+            <td>${this.formatSuccessRate(item)}</td>
             <td><a href="#/products/${item.产品id}?tab=success">查看</a></td>
           </tr>`;
       }).join('');
@@ -645,8 +789,28 @@ const app = {
       <div class="page-header">
         <div><h1 class="page-title">成功率查询</h1><p class="page-subtitle">按配方组合查看试验成功率</p></div>
       </div>
+      ${this.successRateHelp()}
       <div class="filter-bar">
         <select class="input" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
+        <input class="input" id="sr-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
+        <input class="input" id="sr-date-to" type="date" value="${this.escapeHtml(dateTo)}">
+        <select class="input" id="sr-status">
+          <option value="" ${status===''?'selected':''}>成功/失败</option>
+          <option value="success" ${status==='success'?'selected':''}>只看成功</option>
+          <option value="failed" ${status==='failed'?'selected':''}>只看失败</option>
+        </select>
+        <input class="input" id="sr-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}" style="width:90px;">
+        <input class="input" id="sr-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}" style="width:90px;">
+        <select class="input" id="sr-sort">
+          <option value="成功率" ${sort==='成功率'?'selected':''}>按成功率</option>
+          <option value="试验次数" ${sort==='试验次数'?'selected':''}>按试验次数</option>
+          <option value="品号" ${sort==='品号'?'selected':''}>按品号</option>
+          <option value="创建时间" ${sort==='创建时间'?'selected':''}>按创建时间</option>
+        </select>
+        <select class="input" id="sr-order">
+          <option value="desc" ${order==='desc'?'selected':''}>降序</option>
+          <option value="asc" ${order==='asc'?'selected':''}>升序</option>
+        </select>
         <button class="btn btn-secondary" onclick="app.searchSuccessRate()">查询</button>
         <button class="btn btn-secondary" onclick="location.hash='#/success-rate'">重置</button>
       </div>
@@ -657,25 +821,143 @@ const app = {
 
   searchSuccessRate() {
     const pid = document.getElementById('sr-product').value;
+    const dateFrom = document.getElementById('sr-date-from').value;
+    const dateTo = document.getElementById('sr-date-to').value;
+    const status = document.getElementById('sr-status').value;
+    const minRate = document.getElementById('sr-min-rate').value;
+    const maxRate = document.getElementById('sr-max-rate').value;
+    const sort = document.getElementById('sr-sort').value;
+    const order = document.getElementById('sr-order').value;
     const p = new URLSearchParams();
     if (pid) p.set('product_id', pid);
+    if (dateFrom) p.set('date_from', dateFrom);
+    if (dateTo) p.set('date_to', dateTo);
+    if (status) p.set('status', status);
+    if (minRate) p.set('min_rate', (parseFloat(minRate) / 100).toString());
+    if (maxRate) p.set('max_rate', (parseFloat(maxRate) / 100).toString());
+    if (sort) p.set('sort', sort);
+    if (order) p.set('order', order);
     location.hash = '#/success-rate?' + p.toString();
   },
 
   // ===== Backup / Export =====
   async backup() {
+    this.modal('确认备份数据库?', '将把当前 SQLite 数据库打包到 backups 目录,并保留最近 10 个备份。', () => {
+      this.runBackup();
+    }, '确认备份');
+  },
+
+  async runBackup() {
     const r = await this.post('/api/backup');
     if (r.ok) this.toast('备份完成: ' + r.data.filename);
     else this.toast(r.error || '备份失败', 'error');
   },
 
-  exportExcel(type) {
-    window.open('/api/export/excel?type=' + type, '_blank');
-    this.toast('正在导出 Excel...');
+  async downloadExport(url, fallbackName) {
+    try {
+      const res = await fetch(url, { headers: { 'X-Username': encodeURIComponent(this.user || '') } });
+      if (!res.ok) {
+        let message = '导出失败';
+        try {
+          const data = await res.json();
+          message = data.error || message;
+        } catch (_) {}
+        this.toast(message, 'error');
+        return;
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match ? decodeURIComponent(match[1]) : fallbackName;
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+      this.toast('导出完成: ' + filename);
+    } catch (err) {
+      this.toast('导出失败: ' + (err?.message || err), 'error');
+    }
   },
 
-  exportJson() {
-    window.open('/api/export/json', '_blank');
-    this.toast('正在导出 JSON...');
+  async exportExcel(type) {
+    await this.downloadExport('/api/export/excel?type=' + encodeURIComponent(type), `${type}.xlsx`);
+  },
+
+  async exportJson() {
+    await this.downloadExport('/api/export/json', 'export.json');
+  },
+
+  importData() {
+    const input = document.getElementById('import-file');
+    if (!input) return;
+    input.value = '';
+    input.click();
+  },
+
+  importSelectedFile(input) {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    this.modal(
+      '确认导入数据?',
+      '导入会先备份当前数据库,再用所选 JSON 或 ZIP 备份替换当前数据。',
+      () => this.runImport(file),
+      '确认导入',
+      true
+    );
+  },
+
+  async runImport(file) {
+    try {
+      const contentBase64 = await this.readFileBase64(file);
+      const r = await this.post('/api/import', {
+        filename: file.name,
+        content_base64: contentBase64,
+      });
+      if (r.ok) {
+        const data = r.data || {};
+        this.toast(`导入完成: 产品 ${data.products || 0} / 配方 ${data.recipes || 0}`);
+        location.hash = '#/products';
+        this.route();
+      } else {
+        this.toast(r.error || '导入失败', 'error');
+      }
+    } catch (err) {
+      this.toast('导入失败: ' + (err?.message || err), 'error');
+    }
+  },
+
+  readFileBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = String(reader.result || '');
+        resolve(result.includes(',') ? result.split(',')[1] : result);
+      };
+      reader.onerror = () => reject(reader.error || new Error('读取文件失败'));
+      reader.readAsDataURL(file);
+    });
+  },
+
+  confirmExit() {
+    this.modal('确认退出?', '退出前会保存并备份当前数据,然后停止后台端口和 Python 进程。', () => {
+      this.runExit();
+    }, '确认退出', true);
+  },
+
+  async runExit() {
+    try {
+      const r = await this.post('/api/shutdown');
+      if (r.ok) {
+        this.toast('正在退出...');
+      } else {
+        this.toast(r.error || '退出失败', 'error');
+      }
+    } catch (err) {
+      this.toast('正在退出...');
+    }
   },
 };

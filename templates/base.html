@@ -18,6 +18,8 @@
   <div class="topbar-right">
     <span id="current-user" style="color:var(--text-sub);font-size:13px;"></span>
     <button class="btn btn-secondary" onclick="app.backup()">备份</button>
+    <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
+    <button class="btn btn-secondary" onclick="app.importData()">导入</button>
     <div style="position:relative;display:inline-block;">
       <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
       <div id="export-menu" class="hide" style="position:absolute;right:0;top:38px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 4px 12px rgba(0,0,0,0.08);min-width:140px;z-index:50;">
@@ -29,7 +31,7 @@
         </div>
       </div>
     </div>
-    <button class="btn btn-text" onclick="app.logout()">退出</button>
+    <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>
   </div>
 </div>
 
