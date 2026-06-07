@@ -2,6 +2,13 @@
 
 轻量、易迁移的本地样品库知识库系统，用于记录产品主数据、研发试验配方、配方组合历史和成功率。当前版本作为 MVP 可用版，适合在 Windows 电脑上本地运行和整体迁移。
 
+## 当前交付状态
+
+- 应用入口、数据库、导入导出、备份和退出流程已经打通。
+- 前端已做工作台式视觉优化，支持桌面端和窄屏浏览。
+- `dependencies/` 已放入本地 Python 依赖包，可用于无网络环境安装。
+- `docs/兴达样品库知识库使用指南.docx` 是给日常使用者看的图文说明；本 README 面向安装、迁移和维护。
+
 ## 主要功能
 
 - 产品管理：维护品号、品名、规格、当前数量、状态和备注。
@@ -15,7 +22,7 @@
 - 导出：将产品列表、配方记录、成功率、导入模板或 JSON 数据导出到 `exports/` 专用目录。
 - 导入：支持导入本系统导出的 JSON 文件或备份 ZIP，导入前会自动备份当前数据库。
 - 退出：页面右上角“退出”会确认后备份当前数据，并停止后台端口和 Python 进程。
-- 离线依赖：`dependencies/` 存放 Windows 迁移时可直接安装的依赖包。
+- 离线依赖：`dependencies/` 存放 Windows 迁移时可直接安装的依赖包，已覆盖 `requirements.txt` 中的顶层依赖。
 
 ## 快速启动
 
@@ -44,6 +51,8 @@ Windows 日常使用推荐直接双击：
 ```text
 http://127.0.0.1:7777/
 ```
+
+启动后不要关闭自动打开的后台窗口或命令行窗口；日常退出请用页面右上角“退出”，这样会先做一次备份。
 
 ## 登录
 
@@ -75,6 +84,26 @@ pip install -r requirements.txt
 python -m pip install --no-index --find-links dependencies -r requirements.txt
 ```
 
+### 本地依赖是否齐全
+
+当前 `requirements.txt` 顶层依赖为：
+
+```text
+fastapi
+uvicorn[standard]
+pywebview
+openpyxl
+pydantic
+```
+
+`dependencies/` 中已经包含这些包及其运行所需的传递依赖。可用下面命令做离线安装验证：
+
+```bash
+python -m pip install --no-index --find-links dependencies -r requirements.txt
+```
+
+如果命令提示某个包 `No matching distribution found`，说明当前电脑的 Python 版本或系统架构与本地 wheel 不匹配，或依赖目录不完整。此项目当前依赖包主要面向 Windows + Python 3.14 x64 环境准备。
+
 ## 导出目录
 
 导出文件集中放在 `exports/`，便于识别和取用：
@@ -100,6 +129,8 @@ exports/
 
 导入会替换当前数据库，不是追加合并。系统会在导入前自动备份当前数据库，降低误操作风险。
 
+建议导入前先手动点击一次“备份”，并确认 `backups/` 里出现新的 ZIP 文件。
+
 ## 退出系统
 
 点击页面右上角红色“退出”按钮：
@@ -123,6 +154,8 @@ logs/                        启动和运行日志
 
 `data/`、`backups/`、`exports/`、`logs/` 属于运行数据目录，默认不纳入 Git 版本管理。
 
+如果要给别人拷贝一个可用版本，请保留整个目录结构，不要只拷贝 `app.py` 或数据库文件。
+
 ## 迁移到其他电脑
 
 迁移时复制整个项目文件夹，不要只复制单个程序文件。建议至少带上：
@@ -137,6 +170,15 @@ logs/                        启动和运行日志
 
 到新电脑后双击 `兴达样品库知识库.lnk` 启动。若依赖缺失，启动脚本会尝试从 `dependencies/` 安装。
 
+推荐迁移步骤：
+
+1. 在旧电脑页面右上角点击“退出”，让系统自动备份并停止后台。
+2. 复制整个 `kitchen-lab-kb` 文件夹到 U 盘或新电脑。
+3. 在新电脑确认已安装 Python，并可在命令行运行 `python --version`。
+4. 双击 `兴达样品库知识库.lnk`。
+5. 如果页面没有自动打开，访问 `http://127.0.0.1:7777/`。
+6. 登录后检查产品列表、导出和备份是否正常。
+
 ## 使用指南
 
 更完整的图文说明见：
@@ -144,6 +186,12 @@ logs/                        启动和运行日志
 ```text
 docs/兴达样品库知识库使用指南.docx
 ```
+
+文档建议分工：
+
+- README：给维护者看，说明如何启动、迁移、离线安装依赖和排查问题。
+- 使用指南 Word：给实际录入人员看，说明页面怎么操作。
+- `dependencies/README.md`：给安装维护人员看，说明本地依赖目录如何使用。
 
 ## 常见问题
 
@@ -166,6 +214,12 @@ http://127.0.0.1:7777/
 
 优先在页面右上角点击“退出”。如果页面无法打开，可重启电脑后再启动。
 
+也可以在命令行检查端口：
+
+```powershell
+Get-NetTCPConnection -LocalPort 7777 -ErrorAction SilentlyContinue
+```
+
 ### 导入失败
 
 确认导入文件是本系统导出的 JSON，或 `backups/` 中生成的 ZIP 备份。
@@ -177,6 +231,16 @@ http://127.0.0.1:7777/
 ```text
 exports/_latest/
 ```
+
+### 离线安装依赖失败
+
+先确认 `dependencies/` 不为空，并包含 `.whl` 或 `.tar.gz` 文件。再运行：
+
+```powershell
+python -m pip install --no-index --find-links dependencies -r requirements.txt
+```
+
+如果仍失败，重点核对 Python 版本、Windows 位数和报错中缺失的包名。
 
 ## 测试
 
