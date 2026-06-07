@@ -9,26 +9,26 @@
 <body>
 <div class="topbar" id="topbar">
   <div class="topbar-left">
-    <span class="topbar-brand">样品库知识库</span>
+    <span class="topbar-brand"><span class="brand-mark">KL</span><span>样品库知识库</span></span>
     <nav class="topbar-nav" id="topbar-nav">
       <a href="#/products">产品</a>
       <a href="#/success-rate">成功率查询</a>
     </nav>
   </div>
   <div class="topbar-right">
-    <span id="current-user" style="color:var(--text-sub);font-size:13px;"></span>
+    <span id="current-user" class="current-user"></span>
     <button class="btn btn-secondary" onclick="app.backup()">备份</button>
     <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
     <button class="btn btn-secondary" onclick="app.importData()">导入</button>
-    <div style="position:relative;display:inline-block;">
+    <div class="menu-wrap">
       <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
-      <div id="export-menu" class="hide" style="position:absolute;right:0;top:38px;background:#fff;border:1px solid var(--border);border-radius:var(--radius-md);box-shadow:0 4px 12px rgba(0,0,0,0.08);min-width:140px;z-index:50;">
-        <div style="padding:6px 0;">
-          <a href="javascript:app.exportExcel('products')" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出产品列表</a>
-          <a href="javascript:app.exportExcel('recipes')" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出配方记录</a>
-          <a href="javascript:app.exportExcel('success_rate')" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出成功率</a>
-          <a href="javascript:app.exportJson()" style="display:block;padding:8px 14px;font-size:13px;color:var(--text-main);">导出 JSON</a>
-        </div>
+      <div id="export-menu" class="export-menu hide">
+        <a href="javascript:app.exportExcel('products')">导出产品列表</a>
+        <a href="javascript:app.exportExcel('recipes')">导出配方记录</a>
+        <a href="javascript:app.exportExcel('success_rate')">导出成功率</a>
+        <a href="javascript:app.exportJson()">导出 JSON</a>
+        <a href="javascript:app.exportTemplate('products')">产品导入模板</a>
+        <a href="javascript:app.exportTemplate('recipes')">配方导入模板</a>
       </div>
     </div>
     <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>

@@ -17,6 +17,7 @@ EXPORT_FOLDERS = {
     "recipes": ("配方记录", "配方记录_最新.xlsx"),
     "success_rate": ("成功率", "成功率_最新.xlsx"),
     "json": ("JSON数据", "JSON数据_最新.json"),
+    "templates": ("导入模板", ""),
 }
 LEGACY_PREFIXES = ("products_", "recipes_", "success_rate_", "export_")
 
@@ -118,6 +119,36 @@ def export_excel(export_type: str) -> str:
     path = _export_path(export_key, filename)
     wb.save(path)
     _copy_latest(path, export_key)
+    return path
+
+
+def export_import_template(template_type: str) -> str:
+    _ensure_dir()
+    wb = Workbook()
+    ws = wb.active
+    export_key = "templates"
+
+    if template_type == "products":
+        ws.title = "产品导入模板"
+        headers = ["品号", "规格", "品名", "当前数量", "备注"]
+        sample = ["P-001", "100g", "样品名称", 10, "可选"]
+        filename = "products_import_template.xlsx"
+    elif template_type == "recipes":
+        ws.title = "配方导入模板"
+        headers = ["产品品号", "试验日期", "配方名称", "状态", "用了多少", "类型", "名称", "用量", "单位", "备注"]
+        sample = ["P-001", "2026-06-07", "配方A", "pending", 1, "原料", "水", 1, "g", "状态可填 success/failed/pending"]
+        filename = "recipes_import_template.xlsx"
+    else:
+        raise ValueError(f"Unknown template type: {template_type}")
+
+    _set_header(ws, headers)
+    for col, value in enumerate(sample, 1):
+        ws.cell(row=2, column=col, value=value)
+    for col in range(1, len(headers) + 1):
+        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = 18
+
+    path = _export_path(export_key, filename)
+    wb.save(path)
     return path
 
 

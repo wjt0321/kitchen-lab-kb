@@ -17,9 +17,9 @@ CREATE TABLE IF NOT EXISTS products (
     品号            TEXT NOT NULL UNIQUE,
     规格            TEXT NOT NULL,
     品名            TEXT NOT NULL,
-    当前数量        INTEGER DEFAULT 0,
+    当前数量        INTEGER DEFAULT 0 CHECK (当前数量 >= 0),
     备注            TEXT,
-    状态            TEXT DEFAULT 'active',
+    状态            TEXT DEFAULT 'active' CHECK (状态 IN ('active', 'archived')),
     created_by      TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS recipes (
     试验日期        DATE NOT NULL,
     配方名称        TEXT,
     配方hash        TEXT NOT NULL,
-    状态            TEXT NOT NULL,
-    用了多少        INTEGER,
+    状态            TEXT NOT NULL CHECK (状态 IN ('success', 'failed', 'pending')),
+    用了多少        REAL DEFAULT 0 CHECK (用了多少 IS NULL OR 用了多少 >= 0),
     备注            TEXT,
     created_by      TEXT,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -42,9 +42,9 @@ CREATE TABLE IF NOT EXISTS recipes (
 CREATE TABLE IF NOT EXISTS recipe_materials (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     配方id          INTEGER NOT NULL,
-    类型            TEXT NOT NULL,
+    类型            TEXT NOT NULL CHECK (类型 IN ('原料', '辅料')),
     名称            TEXT NOT NULL,
-    用量            REAL NOT NULL,
+    用量            REAL NOT NULL CHECK (用量 >= 0),
     单位            TEXT,
     排序            INTEGER DEFAULT 0,
     FOREIGN KEY (配方id) REFERENCES recipes(id) ON DELETE CASCADE
@@ -57,6 +57,18 @@ CREATE TABLE IF NOT EXISTS user_logins (
     登出时间        TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS inventory_movements (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    产品id          INTEGER NOT NULL,
+    变动数量        REAL NOT NULL CHECK (变动数量 != 0),
+    变动前          REAL NOT NULL CHECK (变动前 >= 0),
+    变动后          REAL NOT NULL CHECK (变动后 >= 0),
+    原因            TEXT,
+    created_by      TEXT,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (产品id) REFERENCES products(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_products_品号 ON products(品号);
 CREATE INDEX IF NOT EXISTS idx_products_状态 ON products(状态);
 CREATE INDEX IF NOT EXISTS idx_recipes_产品id ON recipes(产品id);
@@ -64,6 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_recipes_配方hash ON recipes(配方hash);
 CREATE INDEX IF NOT EXISTS idx_recipes_状态 ON recipes(状态);
 CREATE INDEX IF NOT EXISTS idx_recipes_试验日期 ON recipes(试验日期);
 CREATE INDEX IF NOT EXISTS idx_materials_配方id ON recipe_materials(配方id);
+CREATE INDEX IF NOT EXISTS idx_inventory_movements_产品id ON inventory_movements(产品id);
 """
 
 VIEW_SQL = """
@@ -98,6 +111,7 @@ def init_db() -> None:
     conn.executescript(SCHEMA_SQL)
     _ensure_recipe_product_cascade(conn)
     _ensure_material_recipe_fk(conn)
+    _ensure_schema_constraints(conn)
     _ensure_success_rate_view(conn)
     conn.executescript(VIEW_SQL)
     conn.commit()
@@ -123,8 +137,8 @@ def _ensure_recipe_product_cascade(conn: sqlite3.Connection) -> None:
             试验日期        DATE NOT NULL,
             配方名称        TEXT,
             配方hash        TEXT NOT NULL,
-            状态            TEXT NOT NULL,
-            用了多少        INTEGER,
+            状态            TEXT NOT NULL CHECK (状态 IN ('success', 'failed', 'pending')),
+            用了多少        REAL DEFAULT 0 CHECK (用了多少 IS NULL OR 用了多少 >= 0),
             备注            TEXT,
             created_by      TEXT,
             created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -165,9 +179,9 @@ def _ensure_material_recipe_fk(conn: sqlite3.Connection) -> None:
         CREATE TABLE recipe_materials_new (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             配方id          INTEGER NOT NULL,
-            类型            TEXT NOT NULL,
+            类型            TEXT NOT NULL CHECK (类型 IN ('原料', '辅料')),
             名称            TEXT NOT NULL,
-            用量            REAL NOT NULL,
+            用量            REAL NOT NULL CHECK (用量 >= 0),
             单位            TEXT,
             排序            INTEGER DEFAULT 0,
             FOREIGN KEY (配方id) REFERENCES recipes(id) ON DELETE CASCADE
@@ -175,6 +189,174 @@ def _ensure_material_recipe_fk(conn: sqlite3.Connection) -> None:
 
         INSERT INTO recipe_materials_new (id, 配方id, 类型, 名称, 用量, 单位, 排序)
         SELECT id, 配方id, 类型, 名称, 用量, 单位, 排序
+        FROM recipe_materials;
+
+        DROP TABLE recipe_materials;
+        ALTER TABLE recipe_materials_new RENAME TO recipe_materials;
+        CREATE INDEX IF NOT EXISTS idx_materials_配方id ON recipe_materials(配方id);
+        """
+    )
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _table_sql(conn: sqlite3.Connection, table: str) -> str:
+    row = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name=?",
+        (table,),
+    ).fetchone()
+    return (row["sql"] or "") if row else ""
+
+
+def _ensure_schema_constraints(conn: sqlite3.Connection) -> None:
+    """Rebuild legacy tables so existing databases get the same CHECK constraints."""
+    _ensure_success_rate_view(conn)
+    products_rebuilt = False
+    if "状态 IN ('active', 'archived')" not in _table_sql(conn, "products"):
+        _rebuild_products_with_constraints(conn)
+        products_rebuilt = True
+
+    recipe_sql = _table_sql(conn, "recipes")
+    recipe_fk_rows = conn.execute("PRAGMA foreign_key_list(recipes)").fetchall()
+    product_fk = next((row for row in recipe_fk_rows if row["table"] == "products"), None)
+    recipe_fk_bad = not product_fk or product_fk["on_delete"].upper() != "CASCADE"
+    if (
+        products_rebuilt
+        or recipe_fk_bad
+        or "状态 IN ('success', 'failed', 'pending')" not in recipe_sql
+        or "用了多少 >= 0" not in recipe_sql
+    ):
+        _rebuild_recipes_with_constraints(conn)
+
+    material_sql = _table_sql(conn, "recipe_materials")
+    material_fk_rows = conn.execute("PRAGMA foreign_key_list(recipe_materials)").fetchall()
+    material_fk = next((row for row in material_fk_rows if row["from"] == "配方id"), None)
+    material_fk_bad = (
+        not material_fk
+        or material_fk["table"] != "recipes"
+        or material_fk["on_delete"].upper() != "CASCADE"
+    )
+    if (
+        material_fk_bad
+        or "类型 IN ('原料', '辅料')" not in material_sql
+        or "用量 >= 0" not in material_sql
+    ):
+        _rebuild_materials_with_constraints(conn)
+
+
+def _rebuild_products_with_constraints(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        """
+        ALTER TABLE products RENAME TO products_old;
+
+        CREATE TABLE products (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            品号            TEXT NOT NULL UNIQUE,
+            规格            TEXT NOT NULL,
+            品名            TEXT NOT NULL,
+            当前数量        INTEGER DEFAULT 0 CHECK (当前数量 >= 0),
+            备注            TEXT,
+            状态            TEXT DEFAULT 'active' CHECK (状态 IN ('active', 'archived')),
+            created_by      TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        INSERT INTO products (
+            id, 品号, 规格, 品名, 当前数量, 备注, 状态, created_by, created_at, updated_at
+        )
+        SELECT
+            id,
+            品号,
+            规格,
+            品名,
+            CASE WHEN 当前数量 >= 0 THEN 当前数量 ELSE 0 END,
+            备注,
+            CASE WHEN 状态 IN ('active', 'archived') THEN 状态 ELSE 'active' END,
+            created_by,
+            created_at,
+            updated_at
+        FROM products_old;
+
+        DROP TABLE products_old;
+        CREATE INDEX IF NOT EXISTS idx_products_品号 ON products(品号);
+        CREATE INDEX IF NOT EXISTS idx_products_状态 ON products(状态);
+        """
+    )
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _rebuild_recipes_with_constraints(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP VIEW IF EXISTS v_recipe_success_rate")
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        """
+        ALTER TABLE recipes RENAME TO recipes_old;
+
+        CREATE TABLE recipes (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            产品id          INTEGER NOT NULL,
+            试验日期        DATE NOT NULL,
+            配方名称        TEXT,
+            配方hash        TEXT NOT NULL,
+            状态            TEXT NOT NULL CHECK (状态 IN ('success', 'failed', 'pending')),
+            用了多少        REAL DEFAULT 0 CHECK (用了多少 IS NULL OR 用了多少 >= 0),
+            备注            TEXT,
+            created_by      TEXT,
+            created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (产品id) REFERENCES products(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO recipes (
+            id, 产品id, 试验日期, 配方名称, 配方hash, 状态, 用了多少, 备注, created_by, created_at
+        )
+        SELECT
+            id,
+            产品id,
+            试验日期,
+            配方名称,
+            配方hash,
+            CASE WHEN 状态 IN ('success', 'failed', 'pending') THEN 状态 ELSE 'pending' END,
+            CASE WHEN 用了多少 IS NULL OR 用了多少 >= 0 THEN 用了多少 ELSE 0 END,
+            备注,
+            created_by,
+            created_at
+        FROM recipes_old;
+
+        DROP TABLE recipes_old;
+        CREATE INDEX IF NOT EXISTS idx_recipes_产品id ON recipes(产品id);
+        CREATE INDEX IF NOT EXISTS idx_recipes_配方hash ON recipes(配方hash);
+        CREATE INDEX IF NOT EXISTS idx_recipes_状态 ON recipes(状态);
+        CREATE INDEX IF NOT EXISTS idx_recipes_试验日期 ON recipes(试验日期);
+        """
+    )
+    conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _rebuild_materials_with_constraints(conn: sqlite3.Connection) -> None:
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.executescript(
+        """
+        CREATE TABLE recipe_materials_new (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            配方id          INTEGER NOT NULL,
+            类型            TEXT NOT NULL CHECK (类型 IN ('原料', '辅料')),
+            名称            TEXT NOT NULL,
+            用量            REAL NOT NULL CHECK (用量 >= 0),
+            单位            TEXT,
+            排序            INTEGER DEFAULT 0,
+            FOREIGN KEY (配方id) REFERENCES recipes(id) ON DELETE CASCADE
+        );
+
+        INSERT INTO recipe_materials_new (id, 配方id, 类型, 名称, 用量, 单位, 排序)
+        SELECT
+            id,
+            配方id,
+            CASE WHEN 类型 IN ('原料', '辅料') THEN 类型 ELSE '原料' END,
+            名称,
+            CASE WHEN 用量 >= 0 THEN 用量 ELSE 0 END,
+            单位,
+            排序
         FROM recipe_materials;
 
         DROP TABLE recipe_materials;

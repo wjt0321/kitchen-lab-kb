@@ -11,13 +11,14 @@ KEEP_COUNT = 10
 
 def do_backup() -> str:
     os.makedirs(BACKUP_DIR, exist_ok=True)
+    if not os.path.exists(DB_PATH):
+        raise FileNotFoundError(f"数据库不存在: {DB_PATH}")
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"kitchen_{now}.zip"
     filepath = os.path.join(BACKUP_DIR, filename)
 
     with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
-        if os.path.exists(DB_PATH):
-            zf.write(DB_PATH, arcname="kitchen.db")
+        zf.write(DB_PATH, arcname="kitchen.db")
 
     _cleanup_old_backups()
     return filepath

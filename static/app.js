@@ -118,18 +118,18 @@ const app = {
   },
 
   successRateHelp() {
-    return '<p style="margin:0 0 12px;color:var(--text-sub);font-size:13px;">成功率 = 同一配方组合下成功次数 / 成功或失败试验次数。只有 2 次及以上同组合试验才显示百分比,单次试验标记为样本不足。</p>';
+    return '<p class="help-note">成功率 = 同一配方组合下成功次数 / 成功或失败试验次数。只有 2 次及以上同组合试验才显示百分比,单次试验标记为样本不足。</p>';
   },
 
   formatSuccessRate(item) {
     if (!item || item.成功率 == null || !item.试验次数) return '-';
     const trials = Number(item.试验次数 || 0);
     if (trials < 2) {
-      return `<span style="font-weight:600;color:var(--warning);">样本不足</span><span style="color:var(--text-weak);font-size:12px;margin-left:6px;">${trials} 次试验</span>`;
+      return `<span class="metric-warning">样本不足</span><span class="metric-note">${trials} 次试验</span>`;
     }
     const pct = Math.round((item.成功率 || 0) * 100);
     const barColor = pct>=80?'#16A34A':pct>=50?'#2563EB':pct>=1?'#D97706':'#DC2626';
-    return `<span style="font-weight:600;">${pct}%</span><span class="progress-bar"><span class="progress-bar-inner" style="width:${pct}%;background:${barColor};"></span></span>`;
+    return `<span class="metric-strong">${pct}%</span><span class="progress-bar"><span class="progress-bar-inner" style="width:${pct}%;background:${barColor};"></span></span>`;
   },
 
   formatDate(d) {
@@ -174,13 +174,14 @@ const app = {
     const last = localStorage.getItem('username') || '';
     const safeLast = this.escapeHtml(last);
     el.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:center;min-height:70vh;">
-        <div class="card" style="width:360px;text-align:center;">
-          <h2 style="margin:0 0 4px;font-size:20px;">样品库知识库</h2>
-          <p style="margin:0 0 20px;color:var(--text-sub);font-size:13px;">研发样品与配方记录工具</p>
-          <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()" style="margin-bottom:12px;">
-          <button class="btn btn-primary" style="width:100%;" onclick="app.login()">登录</button>
-          ${last?`<p style="margin-top:12px;font-size:13px;color:var(--text-weak);">上次登录: ${safeLast}</p>`:''}
+      <div class="login-shell">
+        <div class="card login-card">
+          <div class="login-kicker">Kitchen Lab</div>
+          <h2>样品库知识库</h2>
+          <p>研发样品与配方记录工具</p>
+          <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()">
+          <button class="btn btn-primary" onclick="app.login()">登录</button>
+          ${last?`<div class="login-last">上次登录: ${safeLast}</div>`:''}
         </div>
       </div>`;
   },
@@ -200,7 +201,7 @@ const app = {
       rows = `<tr><td colspan="8"><div class="empty-state">
         <h3>${q?'没有找到匹配的产品':'暂无产品'}</h3>
         <p>${q?'请尝试更换关键词,或清空筛选条件。':'还没有录入任何产品。先新建一个产品,再记录配方试验。'}</p>
-        ${q?`<button class="btn btn-primary" onclick="app.navProducts()">清空筛选</button>`:`<button class="btn btn-primary" onclick="location.hash='#/products/new'">+ 新建产品</button>`}
+        ${q?`<button class="btn btn-primary" onclick="app.navProducts()">清空筛选</button>`:`<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`}
       </div></td></tr>`;
     } else {
       rows = items.map(p => `
@@ -215,11 +216,11 @@ const app = {
           <td>
             <a href="#/products/${p.id}" onclick="event.stopPropagation()">查看</a>
             ${p.状态==='active'?`
-              <a href="#/products/${p.id}/edit" onclick="event.stopPropagation()" style="margin-left:8px;">编辑</a>
-              <button class="btn btn-text" onclick="event.stopPropagation();app.archiveProduct(${p.id})" style="margin-left:8px;color:var(--danger);">归档</button>
+              <a href="#/products/${p.id}/edit" onclick="event.stopPropagation()">编辑</a>
+              <button class="btn btn-subtle-danger" onclick="event.stopPropagation();app.archiveProduct(${p.id})">归档</button>
             `:`
-              <button class="btn btn-text" onclick="event.stopPropagation();app.restoreProduct(${p.id})" style="margin-left:8px;">恢复</button>
-              <button class="btn btn-text" onclick="event.stopPropagation();app.deleteProduct(${p.id})" style="margin-left:8px;color:var(--danger);">删除</button>
+              <button class="btn btn-text" onclick="event.stopPropagation();app.restoreProduct(${p.id})">恢复</button>
+              <button class="btn btn-subtle-danger" onclick="event.stopPropagation();app.deleteProduct(${p.id})">删除</button>
             `}
           </td>
         </tr>
@@ -232,10 +233,10 @@ const app = {
           <h1 class="page-title">产品列表</h1>
           <p class="page-subtitle">管理产品主数据、库存数量和配方记录</p>
         </div>
-        <button class="btn btn-primary" onclick="location.hash='#/products/new'">+ 新建产品</button>
+        <button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>
       </div>
       <div class="filter-bar">
-        <input class="input" id="prod-q" placeholder="搜索品号 / 品名……" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()" style="min-width:220px;">
+        <input class="input" id="prod-q" placeholder="搜索品号 / 品名……" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
         <select class="input" id="prod-status" onchange="app.searchProducts()">
           <option value="active" ${status==='active'?'selected':''}>活跃</option>
           <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
@@ -278,8 +279,8 @@ const app = {
     }
     el.innerHTML = `
       <div class="breadcrumb"><a href="#/products">产品列表</a> / ${id?'编辑产品':'新建产品'}</div>
-      <div class="card" style="max-width:680px;">
-        <h3 style="margin:0 0 16px;font-size:16px;">基本信息</h3>
+      <div class="card form-card">
+        <h3>基本信息</h3>
         <div class="form-grid">
           <label>品号 <span style="color:var(--danger)">*</span></label>
           <div><input class="input" id="pf-品号" value="${this.escapeHtml(data.品号)}"><div class="field-error hide" id="err-品号"></div></div>
@@ -292,7 +293,7 @@ const app = {
           <label>备注</label>
           <div><textarea class="input" id="pf-备注">${this.escapeHtml(data.备注||'')}</textarea></div>
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+        <div class="form-actions">
           <button class="btn btn-secondary" onclick="location.hash='#/products'">取消</button>
           <button class="btn btn-primary" id="pf-save" onclick="app.saveProduct(${id||0})">保存</button>
         </div>
@@ -332,21 +333,33 @@ const app = {
     if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>产品不存在</h3></div>'; return; }
     const p = r.data;
     const showTab = params.get('tab') === 'success' ? 'success' : 'recipes';
+    const movementRes = await this.get(`/api/products/${id}/inventory-movements`);
+    const movements = movementRes.ok ? (movementRes.data || []) : [];
+    const movementRows = movements.length ? movements.slice(0, 5).map(m => `
+      <tr>
+        <td>${this.formatDate(m.created_at)}</td>
+        <td>${m.变动数量 > 0 ? '+' : ''}${m.变动数量}</td>
+        <td>${m.变动前} → ${m.变动后}</td>
+        <td>${this.escapeHtml(m.原因 || '-')}</td>
+        <td>${this.escapeHtml(m.created_by || '-')}</td>
+      </tr>
+    `).join('') : `<tr><td colspan="5"><div class="empty-state empty-state-compact">暂无库存变动记录</div></td></tr>`;
 
     el.innerHTML = `
       <div class="breadcrumb"><a href="#/products">产品列表</a> / ${this.escapeHtml(p.品号)}</div>
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;">
+        <div class="detail-head">
           <div>
-            <h2 style="margin:0 0 6px;font-size:20px;">${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</h2>
-            <div style="color:var(--text-sub);font-size:13px;">
+            <h2>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</h2>
+            <div class="status-quiet">
               规格: ${this.escapeHtml(p.规格)} &nbsp; 当前数量: ${p.当前数量} &nbsp; 状态: ${this.statusBadge(p.状态)}
             </div>
-            ${p.备注?`<div style="margin-top:6px;color:var(--text-sub);font-size:13px;">备注: ${this.escapeHtml(p.备注)}</div>`:''}
+            ${p.备注?`<div class="status-quiet detail-note">备注: ${this.escapeHtml(p.备注)}</div>`:''}
           </div>
-          <div style="display:flex;gap:8px;">
+          <div class="inline-actions">
             ${p.状态==='active'?`
               <button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${p.id}'">新建配方</button>
+              <button class="btn btn-secondary" onclick="app.adjustInventory(${p.id})">调整库存</button>
               <button class="btn btn-secondary" onclick="location.hash='#/products/${p.id}/edit'">编辑</button>
               <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id})">归档</button>
             `:`
@@ -355,6 +368,15 @@ const app = {
             `}
           </div>
         </div>
+      </div>
+      <div class="card">
+        <div class="panel-heading">
+          <h3>库存流水</h3>
+          <button class="btn btn-secondary" onclick="app.adjustInventory(${p.id})">调整库存</button>
+        </div>
+        <div class="table-wrap"><table><thead>
+          <tr><th>时间</th><th>变动</th><th>库存</th><th>原因</th><th>操作人</th></tr>
+        </thead><tbody>${movementRows}</tbody></table></div>
       </div>
       <div class="tabs">
         <button class="tab ${showTab==='recipes'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=recipes'">配方记录</button>
@@ -371,6 +393,7 @@ const app = {
 
   async renderProductRecipes(productId, params = new URLSearchParams()) {
     const status = params.get('status') || '';
+    const material = params.get('material') || '';
     const dateFrom = params.get('date_from') || '';
     const dateTo = params.get('date_to') || '';
     const minRate = params.get('min_rate') || '';
@@ -379,6 +402,7 @@ const app = {
     const order = params.get('order') || 'desc';
     const query = new URLSearchParams({ product_id: productId });
     if (status) query.set('status', status);
+    if (material) query.set('material', material);
     if (dateFrom) query.set('date_from', dateFrom);
     if (dateTo) query.set('date_to', dateTo);
     if (minRate) query.set('min_rate', minRate);
@@ -398,10 +422,11 @@ const app = {
           <option value="failed" ${status==='failed'?'selected':''}>失败</option>
           <option value="pending" ${status==='pending'?'selected':''}>待观察</option>
         </select>
+        <input class="input" id="prod-rec-material" list="material-list" placeholder="原料/辅料" value="${this.escapeHtml(material)}">
         <input class="input" id="prod-rec-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
         <input class="input" id="prod-rec-date-to" type="date" value="${this.escapeHtml(dateTo)}">
-        <input class="input" id="prod-rec-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}" style="width:90px;">
-        <input class="input" id="prod-rec-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}" style="width:90px;">
+        <input class="input input-short" id="prod-rec-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}">
+        <input class="input input-short" id="prod-rec-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}">
         <select class="input" id="prod-rec-sort">
           <option value="试验日期" ${sort==='试验日期'?'selected':''}>按试验日期</option>
           <option value="成功率" ${sort==='成功率'?'selected':''}>按成功率</option>
@@ -414,10 +439,12 @@ const app = {
         </select>
         <button class="btn btn-secondary" onclick="app.searchProductRecipes(${productId})">查询</button>
         <button class="btn btn-secondary" onclick="location.hash='#/products/${productId}?tab=recipes'">重置</button>
+        <datalist id="material-list"></datalist>
       </div>`;
 
     if (items.length === 0) {
-      box.innerHTML = `${filters}<div class="empty-state"><h3>暂无配方记录</h3><p>这个产品还没有试验记录。可以新建一条配方,记录原料、辅料和试验结果。</p><button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">+ 新建配方</button></div>`;
+      box.innerHTML = `${filters}<div class="empty-state"><h3>暂无配方记录</h3><p>这个产品还没有试验记录。可以新建一条配方,记录原料、辅料和试验结果。</p><button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">新建配方</button></div>`;
+      this.loadMaterialSuggestions();
       return;
     }
 
@@ -438,11 +465,13 @@ const app = {
       <div class="table-wrap"><table><thead>
         <tr><th>日期</th><th>配方名称</th><th>状态</th><th>用量</th><th>成功率</th><th>创建人</th><th>操作</th></tr>
       </thead><tbody>${rows}</tbody></table></div>`;
+    this.loadMaterialSuggestions();
   },
 
   searchProductRecipes(productId) {
     const p = new URLSearchParams({ tab: 'recipes' });
     const status = document.getElementById('prod-rec-status')?.value || '';
+    const material = document.getElementById('prod-rec-material')?.value || '';
     const dateFrom = document.getElementById('prod-rec-date-from')?.value || '';
     const dateTo = document.getElementById('prod-rec-date-to')?.value || '';
     const minRate = document.getElementById('prod-rec-min-rate')?.value || '';
@@ -450,6 +479,7 @@ const app = {
     const sort = document.getElementById('prod-rec-sort')?.value || '';
     const order = document.getElementById('prod-rec-order')?.value || '';
     if (status) p.set('status', status);
+    if (material) p.set('material', material);
     if (dateFrom) p.set('date_from', dateFrom);
     if (dateTo) p.set('date_to', dateTo);
     if (minRate) p.set('min_rate', (parseFloat(minRate) / 100).toString());
@@ -545,6 +575,27 @@ const app = {
     }, '确认删除', true);
   },
 
+  async adjustInventory(id) {
+    const rawDelta = prompt('请输入库存变动数量,消耗用负数');
+    if (rawDelta === null) return;
+    const delta = parseFloat(rawDelta);
+    if (!delta) {
+      this.toast('库存变动数量必须是非零数字', 'error');
+      return;
+    }
+    const reason = prompt('请输入变动原因') || '';
+    const r = await this.post(`/api/products/${id}/inventory-adjust`, {
+      变动数量: delta,
+      原因: reason,
+    });
+    if (r.ok) {
+      this.toast(`库存已更新: ${r.data.变动后}`);
+      this.route();
+    } else {
+      this.toast(r.error || '库存调整失败', 'error');
+    }
+  },
+
   // ===== Recipe form =====
   async renderRecipeForm(el, id, prefillProductId) {
     let data = { 产品id: prefillProductId||'', 试验日期: new Date().toISOString().slice(0,10), 配方名称:'', 用了多少:'', 状态:'pending', 备注:'', 原料辅料:[] };
@@ -561,7 +612,7 @@ const app = {
     el.innerHTML = `
       <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${data.产品id}">${this.escapeHtml(data.品号||'')}</a> / ${id?'编辑配方':'新建配方'}</div>
       <div class="card">
-        <h3 style="margin:0 0 16px;font-size:16px;">试验信息</h3>
+        <h3>试验信息</h3>
         <div class="form-grid">
           <label>产品 <span style="color:var(--danger)">*</span></label>
           <select class="input" id="rf-产品id">${productOptions}</select>
@@ -574,35 +625,38 @@ const app = {
         </div>
       </div>
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-          <h3 style="margin:0;font-size:16px;">原料 / 辅料</h3>
-          <button class="btn btn-secondary" onclick="app.addMatRow()">+ 添加行</button>
+        <div class="panel-heading">
+          <h3>原料 / 辅料</h3>
+          <button class="btn btn-secondary" onclick="app.addMatRow()">添加行</button>
         </div>
         <div class="table-wrap"><table><thead>
           <tr><th>类型</th><th>名称</th><th>用量</th><th>单位</th><th>操作</th></tr>
         </thead><tbody id="mat-tbody">${matRows}</tbody></table></div>
+        <datalist id="material-list"></datalist>
+        <datalist id="unit-list"></datalist>
         <div class="field-error hide" id="mat-error"></div>
       </div>
       <div class="card">
-        <h3 style="margin:0 0 16px;font-size:16px;">结果状态</h3>
-        <div style="display:flex;gap:20px;margin-bottom:12px;">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="rf-状态" value="success" ${data.状态==='success'?'checked':''}> 成功</label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="rf-状态" value="failed" ${data.状态==='failed'?'checked':''}> 失败</label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="rf-状态" value="pending" ${data.状态==='pending'?'checked':''}> 待观察</label>
+        <h3>结果状态</h3>
+        <div class="radio-row">
+          <label><input type="radio" name="rf-状态" value="success" ${data.状态==='success'?'checked':''}> 成功</label>
+          <label><input type="radio" name="rf-状态" value="failed" ${data.状态==='failed'?'checked':''}> 失败</label>
+          <label><input type="radio" name="rf-状态" value="pending" ${data.状态==='pending'?'checked':''}> 待观察</label>
         </div>
-        <label style="color:var(--text-sub);font-size:14px;">备注</label>
-        <textarea class="input" id="rf-备注" style="margin-top:6px;">${this.escapeHtml(data.备注||'')}</textarea>
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:20px;">
+        <label class="field-label">备注</label>
+        <textarea class="input" id="rf-备注">${this.escapeHtml(data.备注||'')}</textarea>
+        <div class="form-actions">
           <button class="btn btn-secondary" onclick="history.back()">取消</button>
           <button class="btn btn-primary" id="rf-save" onclick="app.saveRecipe(${id||0})">保存配方</button>
         </div>
       </div>`;
+    this.loadMaterialSuggestions();
   },
 
   _matRow(idx, m={}) {
     return `<tr data-idx="${idx}">
       <td><select class="input" data-field="类型"><option value="原料" ${m.类型==='原料'?'selected':''}>原料</option><option value="辅料" ${m.类型==='辅料'?'selected':''}>辅料</option></select></td>
-      <td><input class="input" data-field="名称" value="${this.escapeHtml(m.名称||'')}"></td>
+      <td><input class="input" data-field="名称" list="material-list" value="${this.escapeHtml(m.名称||'')}"></td>
       <td><input class="input" data-field="用量" type="number" step="any" value="${m.用量||''}"></td>
       <td><input class="input" data-field="单位" list="unit-list" value="${this.escapeHtml(m.单位||'')}"></td>
       <td><button class="btn btn-subtle-danger" onclick="this.closest('tr').remove()">删除</button></td>
@@ -615,6 +669,27 @@ const app = {
     const tr = document.createElement('tbody');
     tr.innerHTML = this._matRow(idx, {类型:'原料'});
     tbody.appendChild(tr.firstElementChild);
+  },
+
+  async loadMaterialSuggestions() {
+    const materialList = document.getElementById('material-list');
+    const unitList = document.getElementById('unit-list');
+    if (!materialList && !unitList) return;
+    const r = await this.get('/api/materials/suggestions?limit=100');
+    if (!r.ok) return;
+    const items = r.data || [];
+    if (materialList) {
+      const seen = new Set();
+      materialList.innerHTML = items.filter(item => {
+        if (seen.has(item.名称)) return false;
+        seen.add(item.名称);
+        return true;
+      }).map(item => `<option value="${this.escapeHtml(item.名称)}" label="${this.escapeHtml(item.类型)} · ${item.使用次数} 次"></option>`).join('');
+    }
+    if (unitList) {
+      const units = [...new Set(items.map(item => item.单位).filter(Boolean))];
+      unitList.innerHTML = units.map(unit => `<option value="${this.escapeHtml(unit)}"></option>`).join('');
+    }
   },
 
   async saveRecipe(id) {
@@ -703,6 +778,7 @@ const app = {
             </div>
           </div>
           <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary" onclick="app.duplicateRecipe(${d.id})">复制配方</button>
             <button class="btn btn-secondary" onclick="location.hash='#/recipes/${d.id}/edit'">编辑</button>
             <button class="btn btn-danger" onclick="app.deleteRecipe(${d.id})">删除</button>
           </div>
@@ -743,6 +819,18 @@ const app = {
     }, '确认删除', true);
   },
 
+  async duplicateRecipe(id) {
+    const r = await this.post(`/api/recipes/${id}/duplicate`, {
+      试验日期: new Date().toISOString().slice(0, 10),
+    });
+    if (r.ok) {
+      this.toast('已复制配方,可继续编辑复测记录');
+      location.hash = `#/recipes/${r.data.id}/edit`;
+    } else {
+      this.toast(r.error || '复制失败', 'error');
+    }
+  },
+
   // ===== Success rate page =====
   async renderSuccessRate(el, params) {
     const productId = params.get('product_id') || '';
@@ -751,6 +839,7 @@ const app = {
     const status = params.get('status') || '';
     const minRate = params.get('min_rate') || '';
     const maxRate = params.get('max_rate') || '';
+    const minTrials = params.get('min_trials') || '';
     const sort = params.get('sort') || '成功率';
     const order = params.get('order') || 'desc';
     const prods = await this.get('/api/products?status=active&page_size=999');
@@ -763,6 +852,7 @@ const app = {
     if (status) query.set('status', status);
     if (minRate) query.set('min_rate', minRate);
     if (maxRate) query.set('max_rate', maxRate);
+    if (minTrials) query.set('min_trials', minTrials);
     if (sort) query.set('sort', sort);
     if (order) query.set('order', order);
     const r = await this.get(`/api/success-rate${query.toString()?'?'+query.toString():''}`);
@@ -799,8 +889,9 @@ const app = {
           <option value="success" ${status==='success'?'selected':''}>只看成功</option>
           <option value="failed" ${status==='failed'?'selected':''}>只看失败</option>
         </select>
-        <input class="input" id="sr-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}" style="width:90px;">
-        <input class="input" id="sr-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}" style="width:90px;">
+        <input class="input input-short" id="sr-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}">
+        <input class="input input-short" id="sr-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}">
+        <input class="input input-short" id="sr-min-trials" type="number" min="1" step="1" placeholder="最少次数" value="${this.escapeHtml(minTrials)}">
         <select class="input" id="sr-sort">
           <option value="成功率" ${sort==='成功率'?'selected':''}>按成功率</option>
           <option value="试验次数" ${sort==='试验次数'?'selected':''}>按试验次数</option>
@@ -826,6 +917,7 @@ const app = {
     const status = document.getElementById('sr-status').value;
     const minRate = document.getElementById('sr-min-rate').value;
     const maxRate = document.getElementById('sr-max-rate').value;
+    const minTrials = document.getElementById('sr-min-trials').value;
     const sort = document.getElementById('sr-sort').value;
     const order = document.getElementById('sr-order').value;
     const p = new URLSearchParams();
@@ -835,6 +927,7 @@ const app = {
     if (status) p.set('status', status);
     if (minRate) p.set('min_rate', (parseFloat(minRate) / 100).toString());
     if (maxRate) p.set('max_rate', (parseFloat(maxRate) / 100).toString());
+    if (minTrials) p.set('min_trials', minTrials);
     if (sort) p.set('sort', sort);
     if (order) p.set('order', order);
     location.hash = '#/success-rate?' + p.toString();
@@ -885,6 +978,10 @@ const app = {
 
   async exportExcel(type) {
     await this.downloadExport('/api/export/excel?type=' + encodeURIComponent(type), `${type}.xlsx`);
+  },
+
+  async exportTemplate(type) {
+    await this.downloadExport('/api/export/template?type=' + encodeURIComponent(type), `${type}_import_template.xlsx`);
   },
 
   async exportJson() {

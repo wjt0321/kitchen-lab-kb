@@ -6,9 +6,13 @@
 
 - 产品管理：维护品号、品名、规格、当前数量、状态和备注。
 - 配方记录：按产品记录试验日期、配方名称、原料辅料、状态、用量和备注。
-- 成功率查询：按同一产品、同一配方组合统计试验次数、成功次数和成功率。
-- 备份：将当前数据库打包到 `backups/`，保留安全恢复点。
-- 导出：将产品列表、配方记录、成功率或 JSON 数据导出到 `exports/` 专用目录。
+- 配方复制：从已有配方快速生成一条待观察复测记录，保留原料辅料组合。
+- 原料查询：配方列表支持按原料/辅料名称反查，录入时会提示常用原料和单位。
+- 库存流水：支持在产品详情中调整库存，并记录变动前后、原因和操作人。
+- 成功率查询：按同一产品、同一配方组合统计试验次数、成功次数和成功率，并支持最小试验次数筛选。
+- 数据校验：限制非法状态、负数库存/用量，并对不存在的记录返回明确错误。
+- 备份：将当前数据库打包到 `backups/`，保留安全恢复点；数据库缺失时不会生成空备份。
+- 导出：将产品列表、配方记录、成功率、导入模板或 JSON 数据导出到 `exports/` 专用目录。
 - 导入：支持导入本系统导出的 JSON 文件或备份 ZIP，导入前会自动备份当前数据库。
 - 退出：页面右上角“退出”会确认后备份当前数据，并停止后台端口和 Python 进程。
 - 离线依赖：`dependencies/` 存放 Windows 迁移时可直接安装的依赖包。
@@ -80,6 +84,7 @@ exports/
   产品列表/
   配方记录/
   成功率/
+  导入模板/
   JSON数据/
   _latest/
 ```
@@ -179,5 +184,5 @@ exports/_latest/
 
 ```bash
 Get-ChildItem tests\check_*.py | ForEach-Object { python $_.FullName }
-python -m py_compile startup.py app.py export.py import_data.py shutdown.py
+python -m py_compile startup.py app.py export.py import_data.py shutdown.py auth.py backup.py db.py
 ```

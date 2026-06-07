@@ -1,31 +1,35 @@
 """FastAPI application — APIs + page routes."""
 import os
-import json
-import shutil
-from datetime import datetime
+from datetime import date
 from typing import List, Optional
 
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from string import Template
 
 from db import (
-    init_db, get_db, db_query, db_query_one, db_execute,
+    init_db, get_db, db_query, db_query_one,
     recipe_hash, get_recipe_materials, insert_materials,
 )
 from auth import login_user, logout_user, get_current_user
 from backup import do_backup
-from export import export_excel, export_json
+from export import export_excel, export_import_template, export_json
 from import_data import import_base64
 from shutdown import request_shutdown
 
 app = FastAPI(title="样品库知识库")
 SHUTDOWN_HANDLER = request_shutdown
+LOCAL_ORIGINS = [
+    "http://127.0.0.1:7777",
+    "http://localhost:7777",
+]
+RECIPE_STATUSES = {"success", "failed", "pending"}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=LOCAL_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -60,6 +64,110 @@ def ok(data=None):
 
 def fail(error: str, status_code: int = 400):
     return JSONResponse(status_code=status_code, content={"ok": False, "data": None, "error": error})
+
+
+class ProductInput(BaseModel):
+    品号: str = ""
+    规格: str = ""
+    品名: str = ""
+    当前数量: int = Field(default=0, ge=0)
+    备注: str = ""
+
+    @field_validator("品号", "规格", "品名", "备注", mode="before")
+    @classmethod
+    def _strip_text(cls, value):
+        return str(value or "").strip()
+
+    @field_validator("品号", "规格", "品名")
+    @classmethod
+    def _required_text(cls, value):
+        if not value:
+            raise ValueError("必填")
+        return value
+
+
+class RecipeInput(BaseModel):
+    产品id: Optional[int] = None
+    试验日期: str = ""
+    配方名称: str = ""
+    状态: str = "pending"
+    用了多少: float = Field(default=0, ge=0)
+    备注: str = ""
+    原料辅料: List[dict] = Field(default_factory=list)
+
+    @field_validator("试验日期", "配方名称", "状态", "备注", mode="before")
+    @classmethod
+    def _strip_text(cls, value):
+        return str(value or "").strip()
+
+    @field_validator("状态")
+    @classmethod
+    def _valid_status(cls, value):
+        if value not in RECIPE_STATUSES:
+            raise ValueError("状态必须是 success、failed 或 pending")
+        return value
+
+
+def _product_input(body: dict):
+    try:
+        return ProductInput.model_validate(body)
+    except ValidationError as exc:
+        fields = {str(err["loc"][0]) for err in exc.errors() if err.get("loc")}
+        if "当前数量" in fields:
+            return "当前数量不能小于 0"
+        return "品号、规格、品名为必填项"
+
+
+def _recipe_input(body: dict):
+    try:
+        data = RecipeInput.model_validate(body)
+    except ValidationError as exc:
+        fields = {str(err["loc"][0]) for err in exc.errors() if err.get("loc")}
+        if "状态" in fields:
+            return "状态必须是 success、failed 或 pending"
+        if "用了多少" in fields:
+            return "用了多少不能小于 0"
+        return "配方数据格式错误"
+    if not data.产品id or not data.试验日期:
+        return "产品和试验日期为必填项"
+    return data
+
+
+class InventoryAdjustmentInput(BaseModel):
+    变动数量: float
+    原因: str = ""
+
+    @field_validator("变动数量")
+    @classmethod
+    def _non_zero_delta(cls, value):
+        if value == 0:
+            raise ValueError("变动数量不能为 0")
+        return value
+
+    @field_validator("原因", mode="before")
+    @classmethod
+    def _strip_reason(cls, value):
+        return str(value or "").strip()
+
+
+def _inventory_adjustment_input(body: dict):
+    try:
+        return InventoryAdjustmentInput.model_validate(body)
+    except ValidationError:
+        return "库存变动数量必须是非零数字"
+
+
+def _record_inventory_movement(conn, product_id: int, before, after, reason: str, user: str) -> None:
+    delta = float(after) - float(before)
+    if delta == 0:
+        return
+    conn.execute(
+        """
+        INSERT INTO inventory_movements (产品id, 变动数量, 变动前, 变动后, 原因, created_by)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (product_id, delta, before, after, reason, user),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -141,20 +249,15 @@ async def api_products(
 @app.post("/api/products")
 async def api_product_create(request: Request):
     body = await request.json()
-    品号 = body.get("品号", "").strip()
-    规格 = body.get("规格", "").strip()
-    品名 = body.get("品名", "").strip()
-    当前数量 = body.get("当前数量", 0)
-    备注 = body.get("备注", "")
+    data = _product_input(body)
+    if isinstance(data, str):
+        return fail(data)
     user = get_current_user(request) or ""
 
-    if not 品号 or not 规格 or not 品名:
-        return fail("品号、规格、品名为必填项")
-
     # duplicate check
-    dup = db_query_one("SELECT id FROM products WHERE 品号 = ?", (品号,))
+    dup = db_query_one("SELECT id FROM products WHERE 品号 = ?", (data.品号,))
     if dup:
-        return fail(f"品号 {品号} 已存在")
+        return fail(f"品号 {data.品号} 已存在")
 
     conn = get_db()
     cur = conn.execute(
@@ -162,12 +265,12 @@ async def api_product_create(request: Request):
         INSERT INTO products (品号, 规格, 品名, 当前数量, 备注, created_by, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """,
-        (品号, 规格, 品名, 当前数量, 备注, user),
+        (data.品号, data.规格, data.品名, data.当前数量, data.备注, user),
     )
     new_id = cur.lastrowid
     conn.commit()
     conn.close()
-    return ok({"id": new_id, "品号": 品号})
+    return ok({"id": new_id, "品号": data.品号})
 
 
 @app.get("/api/products/{product_id}")
@@ -181,27 +284,34 @@ async def api_product_detail(product_id: int):
 @app.put("/api/products/{product_id}")
 async def api_product_update(product_id: int, request: Request):
     body = await request.json()
-    品号 = body.get("品号", "").strip()
-    规格 = body.get("规格", "").strip()
-    品名 = body.get("品名", "").strip()
-    当前数量 = body.get("当前数量", 0)
-    备注 = body.get("备注", "")
+    data = _product_input(body)
+    if isinstance(data, str):
+        return fail(data)
 
-    if not 品号 or not 规格 or not 品名:
-        return fail("品号、规格、品名为必填项")
-
-    dup = db_query_one("SELECT id FROM products WHERE 品号 = ? AND id != ?", (品号, product_id))
+    dup = db_query_one("SELECT id FROM products WHERE 品号 = ? AND id != ?", (data.品号, product_id))
     if dup:
-        return fail(f"品号 {品号} 已存在")
+        return fail(f"品号 {data.品号} 已存在")
+    existing = db_query_one("SELECT 当前数量 FROM products WHERE id = ?", (product_id,))
+    if not existing:
+        return fail("产品不存在", 404)
 
+    user = get_current_user(request) or ""
     conn = get_db()
-    conn.execute(
+    cur = conn.execute(
         """
         UPDATE products
         SET 品号=?, 规格=?, 品名=?, 当前数量=?, 备注=?, updated_at=CURRENT_TIMESTAMP
         WHERE id=?
         """,
-        (品号, 规格, 品名, 当前数量, 备注, product_id),
+        (data.品号, data.规格, data.品名, data.当前数量, data.备注, product_id),
+    )
+    _record_inventory_movement(
+        conn,
+        product_id,
+        existing["当前数量"] or 0,
+        data.当前数量,
+        "手动修改库存",
+        user,
     )
     conn.commit()
     conn.close()
@@ -245,6 +355,51 @@ async def api_product_delete(product_id: int):
     return ok()
 
 
+@app.post("/api/products/{product_id}/inventory-adjust")
+async def api_product_inventory_adjust(product_id: int, request: Request):
+    body = await request.json()
+    data = _inventory_adjustment_input(body)
+    if isinstance(data, str):
+        return fail(data)
+
+    row = db_query_one("SELECT 当前数量 FROM products WHERE id = ?", (product_id,))
+    if not row:
+        return fail("产品不存在", 404)
+
+    before = row["当前数量"] or 0
+    after = before + data.变动数量
+    if after < 0:
+        return fail("库存不能小于 0")
+
+    user = get_current_user(request) or ""
+    conn = get_db()
+    conn.execute(
+        "UPDATE products SET 当前数量=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+        (after, product_id),
+    )
+    _record_inventory_movement(conn, product_id, before, after, data.原因, user)
+    conn.commit()
+    conn.close()
+    return ok({"产品id": product_id, "变动数量": data.变动数量, "变动前": before, "变动后": after})
+
+
+@app.get("/api/products/{product_id}/inventory-movements")
+async def api_product_inventory_movements(product_id: int):
+    product = db_query_one("SELECT id FROM products WHERE id = ?", (product_id,))
+    if not product:
+        return fail("产品不存在", 404)
+    rows = db_query(
+        """
+        SELECT *
+        FROM inventory_movements
+        WHERE 产品id=?
+        ORDER BY created_at DESC, id DESC
+        """,
+        (product_id,),
+    )
+    return ok([dict(r) for r in rows])
+
+
 # ---------------------------------------------------------------------------
 # Recipe APIs
 # ---------------------------------------------------------------------------
@@ -253,6 +408,7 @@ async def api_product_delete(product_id: int):
 async def api_recipes(
     product_id: Optional[int] = None,
     status: str = "",
+    material: str = "",
     date_from: str = "",
     date_to: str = "",
     min_rate: Optional[float] = Query(None, ge=0, le=1),
@@ -272,6 +428,11 @@ async def api_recipes(
     if status:
         where_parts.append("r.状态 = ?")
         params.append(status)
+    if material:
+        where_parts.append(
+            "EXISTS (SELECT 1 FROM recipe_materials m WHERE m.配方id = r.id AND m.名称 LIKE ?)"
+        )
+        params.append(f"%{material}%")
     if date_from:
         where_parts.append("r.试验日期 >= ?")
         params.append(date_from)
@@ -326,25 +487,18 @@ async def api_recipes(
 @app.post("/api/recipes")
 async def api_recipe_create(request: Request):
     body = await request.json()
-    产品id = body.get("产品id")
-    试验日期 = body.get("试验日期", "")
-    配方名称 = body.get("配方名称", "")
-    状态 = body.get("状态", "pending")
-    用了多少 = body.get("用了多少", 0)
-    备注 = body.get("备注", "")
-    materials = body.get("原料辅料", [])
+    data = _recipe_input(body)
+    if isinstance(data, str):
+        return fail(data)
     user = get_current_user(request) or ""
 
-    if not 产品id or not 试验日期:
-        return fail("产品和试验日期为必填项")
-
     # validate materials
-    cleaned = _clean_materials(materials)
+    cleaned = _clean_materials(data.原料辅料)
     if isinstance(cleaned, str):
         return fail(cleaned)
 
     # get 品号 for hash
-    prod = db_query_one("SELECT 品号 FROM products WHERE id = ?", (产品id,))
+    prod = db_query_one("SELECT 品号 FROM products WHERE id = ?", (data.产品id,))
     if not prod:
         return fail("产品不存在")
 
@@ -356,7 +510,7 @@ async def api_recipe_create(request: Request):
         INSERT INTO recipes (产品id, 试验日期, 配方名称, 配方hash, 状态, 用了多少, 备注, created_by)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (产品id, 试验日期, 配方名称, h, 状态, 用了多少, 备注, user),
+        (data.产品id, data.试验日期, data.配方名称, h, data.状态, data.用了多少, data.备注, user),
     )
     recipe_id = cur.lastrowid
     insert_materials(conn, recipe_id, cleaned)
@@ -401,27 +555,60 @@ async def api_recipe_same_hash(recipe_id: int):
     return ok([dict(r) for r in rows])
 
 
-@app.put("/api/recipes/{recipe_id}")
-async def api_recipe_update(recipe_id: int, request: Request):
-    body = await request.json()
-    产品id = body.get("产品id")
-    试验日期 = body.get("试验日期", "")
-    配方名称 = body.get("配方名称", "")
-    状态 = body.get("状态", "pending")
-    用了多少 = body.get("用了多少", 0)
-    备注 = body.get("备注", "")
-    materials = body.get("原料辅料", [])
+@app.post("/api/recipes/{recipe_id}/duplicate")
+async def api_recipe_duplicate(recipe_id: int, request: Request):
+    source = db_query_one("SELECT * FROM recipes WHERE id = ?", (recipe_id,))
+    if not source:
+        return fail("配方记录不存在", 404)
 
-    if not 产品id or not 试验日期:
-        return fail("产品和试验日期为必填项")
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
 
+    materials = get_recipe_materials(recipe_id)
     cleaned = _clean_materials(materials)
     if isinstance(cleaned, str):
         return fail(cleaned)
 
-    prod = db_query_one("SELECT 品号 FROM products WHERE id = ?", (产品id,))
+    trial_date = str(body.get("试验日期") or date.today().isoformat()).strip()
+    recipe_name = str(body.get("配方名称") or f"{source['配方名称'] or '未命名配方'} 复测").strip()
+    used_amount = body.get("用了多少", source["用了多少"] or 0)
+    note = str(body.get("备注") or source["备注"] or "").strip()
+    user = get_current_user(request) or ""
+
+    conn = get_db()
+    cur = conn.execute(
+        """
+        INSERT INTO recipes (产品id, 试验日期, 配方名称, 配方hash, 状态, 用了多少, 备注, created_by)
+        VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)
+        """,
+        (source["产品id"], trial_date, recipe_name, source["配方hash"], used_amount, note, user),
+    )
+    new_id = cur.lastrowid
+    insert_materials(conn, new_id, cleaned)
+    conn.commit()
+    conn.close()
+    return ok({"id": new_id})
+
+
+@app.put("/api/recipes/{recipe_id}")
+async def api_recipe_update(recipe_id: int, request: Request):
+    body = await request.json()
+    data = _recipe_input(body)
+    if isinstance(data, str):
+        return fail(data)
+
+    cleaned = _clean_materials(data.原料辅料)
+    if isinstance(cleaned, str):
+        return fail(cleaned)
+
+    prod = db_query_one("SELECT 品号 FROM products WHERE id = ?", (data.产品id,))
     if not prod:
         return fail("产品不存在")
+    existing = db_query_one("SELECT id FROM recipes WHERE id = ?", (recipe_id,))
+    if not existing:
+        return fail("配方记录不存在", 404)
 
     h = recipe_hash(prod["品号"], cleaned)
 
@@ -432,7 +619,7 @@ async def api_recipe_update(recipe_id: int, request: Request):
         SET 产品id=?, 试验日期=?, 配方名称=?, 配方hash=?, 状态=?, 用了多少=?, 备注=?
         WHERE id=?
         """,
-        (产品id, 试验日期, 配方名称, h, 状态, 用了多少, 备注, recipe_id),
+        (data.产品id, data.试验日期, data.配方名称, h, data.状态, data.用了多少, data.备注, recipe_id),
     )
     conn.execute("DELETE FROM recipe_materials WHERE 配方id = ?", (recipe_id,))
     insert_materials(conn, recipe_id, cleaned)
@@ -444,9 +631,11 @@ async def api_recipe_update(recipe_id: int, request: Request):
 @app.delete("/api/recipes/{recipe_id}")
 async def api_recipe_delete(recipe_id: int):
     conn = get_db()
-    conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
+    cur = conn.execute("DELETE FROM recipes WHERE id = ?", (recipe_id,))
     conn.commit()
     conn.close()
+    if cur.rowcount == 0:
+        return fail("配方记录不存在", 404)
     return ok()
 
 
@@ -490,6 +679,7 @@ async def api_product_success_rate(
     status: str = "",
     min_rate: Optional[float] = Query(None, ge=0, le=1),
     max_rate: Optional[float] = Query(None, ge=0, le=1),
+    min_trials: int = Query(1, ge=1),
     sort: str = "成功率",
     order: str = "desc",
 ):
@@ -500,6 +690,7 @@ async def api_product_success_rate(
         status=status,
         min_rate=min_rate,
         max_rate=max_rate,
+        min_trials=min_trials,
         sort=sort,
         order=order,
     )
@@ -529,6 +720,7 @@ async def api_global_success_rate(
     status: str = "",
     min_rate: Optional[float] = Query(None, ge=0, le=1),
     max_rate: Optional[float] = Query(None, ge=0, le=1),
+    min_trials: int = Query(1, ge=1),
     sort: str = "成功率",
     order: str = "desc",
 ):
@@ -539,6 +731,7 @@ async def api_global_success_rate(
         status=status,
         min_rate=min_rate,
         max_rate=max_rate,
+        min_trials=min_trials,
         sort=sort,
         order=order,
     )
@@ -583,6 +776,7 @@ def _success_rate_rows(
     status: str = "",
     min_rate: Optional[float] = None,
     max_rate: Optional[float] = None,
+    min_trials: int = 1,
     sort: str = "成功率",
     order: str = "desc",
 ):
@@ -606,6 +800,9 @@ def _success_rate_rows(
             params.extend(valid_values)
 
     having_parts = []
+    if min_trials > 1:
+        having_parts.append("COUNT(*) >= ?")
+        params.append(min_trials)
     if min_rate is not None:
         having_parts.append("成功率 >= ?")
         params.append(min_rate)
@@ -640,6 +837,30 @@ def _success_rate_rows(
     )
 
 
+@app.get("/api/materials/suggestions")
+async def api_material_suggestions(
+    q: str = "",
+    limit: int = Query(50, ge=1, le=200),
+):
+    params: List = []
+    where = ""
+    if q:
+        where = "WHERE 名称 LIKE ?"
+        params.append(f"%{q}%")
+    rows = db_query(
+        f"""
+        SELECT 类型, 名称, COALESCE(单位, '') AS 单位, COUNT(*) AS 使用次数
+        FROM recipe_materials
+        {where}
+        GROUP BY 类型, 名称, COALESCE(单位, '')
+        ORDER BY 使用次数 DESC, 名称 ASC
+        LIMIT ?
+        """,
+        tuple(params + [limit]),
+    )
+    return ok([dict(r) for r in rows])
+
+
 # ---------------------------------------------------------------------------
 # Backup / Export / Import / Shutdown APIs
 # ---------------------------------------------------------------------------
@@ -660,6 +881,15 @@ async def api_export_excel(type: str = "products"):
         return FileResponse(path, filename=os.path.basename(path))
     except Exception as e:
         return fail(f"导出失败: {e}")
+
+
+@app.get("/api/export/template")
+async def api_export_template(type: str = "products"):
+    try:
+        path = export_import_template(type)
+        return FileResponse(path, filename=os.path.basename(path))
+    except Exception as e:
+        return fail(f"导出模板失败: {e}")
 
 
 @app.get("/api/export/json")
