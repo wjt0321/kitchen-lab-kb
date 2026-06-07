@@ -235,14 +235,31 @@ const app = {
         </div>
         <button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>
       </div>
-      <div class="filter-bar">
-        <input class="input" id="prod-q" placeholder="搜索品号 / 品名……" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
-        <select class="input" id="prod-status" onchange="app.searchProducts()">
-          <option value="active" ${status==='active'?'selected':''}>活跃</option>
-          <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
-          <option value="全部" ${status==='全部'?'selected':''}>全部</option>
-        </select>
-        <button class="btn btn-secondary" onclick="app.navProducts()">重置</button>
+      <div class="filter-bar filter-bar-products">
+        <div class="filter-toolbar">
+          <div>
+            <div class="filter-title">筛选产品</div>
+          </div>
+          <div class="filter-meta">共 ${total} 条</div>
+        </div>
+        <div class="filter-grid filter-grid-products">
+          <label class="filter-field filter-field-search">
+            <span class="filter-label">关键词</span>
+            <input class="input" id="prod-q" placeholder="输入品号或品名" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
+          </label>
+          <label class="filter-field">
+            <span class="filter-label">状态</span>
+            <select class="input" id="prod-status" onchange="app.searchProducts()">
+              <option value="active" ${status==='active'?'selected':''}>活跃</option>
+              <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
+              <option value="全部" ${status==='全部'?'selected':''}>全部</option>
+            </select>
+          </label>
+          <div class="filter-actions">
+            <button class="btn btn-primary" onclick="app.searchProducts()">查询</button>
+            <button class="btn btn-secondary" onclick="app.navProducts()">重置</button>
+          </div>
+        </div>
       </div>
       <div class="table-wrap"><table><thead>
         <tr><th>品号</th><th>品名</th><th>规格</th><th>当前数量</th><th>状态</th><th>配方数</th><th>创建时间</th><th>操作</th></tr>
@@ -415,31 +432,65 @@ const app = {
     const items = r.data.items || [];
 
     const filters = `
-      <div class="filter-bar">
-        <select class="input" id="prod-rec-status">
-          <option value="" ${status===''?'selected':''}>全部状态</option>
-          <option value="success" ${status==='success'?'selected':''}>成功</option>
-          <option value="failed" ${status==='failed'?'selected':''}>失败</option>
-          <option value="pending" ${status==='pending'?'selected':''}>待观察</option>
-        </select>
-        <input class="input" id="prod-rec-material" list="material-list" placeholder="原料/辅料" value="${this.escapeHtml(material)}">
-        <input class="input" id="prod-rec-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
-        <input class="input" id="prod-rec-date-to" type="date" value="${this.escapeHtml(dateTo)}">
-        <input class="input input-short" id="prod-rec-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}">
-        <input class="input input-short" id="prod-rec-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}">
-        <select class="input" id="prod-rec-sort">
-          <option value="试验日期" ${sort==='试验日期'?'selected':''}>按试验日期</option>
-          <option value="成功率" ${sort==='成功率'?'selected':''}>按成功率</option>
-          <option value="创建时间" ${sort==='创建时间'?'selected':''}>按创建时间</option>
-          <option value="品号" ${sort==='品号'?'selected':''}>按品号</option>
-        </select>
-        <select class="input" id="prod-rec-order">
-          <option value="desc" ${order==='desc'?'selected':''}>降序</option>
-          <option value="asc" ${order==='asc'?'selected':''}>升序</option>
-        </select>
-        <button class="btn btn-secondary" onclick="app.searchProductRecipes(${productId})">查询</button>
-        <button class="btn btn-secondary" onclick="location.hash='#/products/${productId}?tab=recipes'">重置</button>
-        <datalist id="material-list"></datalist>
+      <div class="filter-bar filter-bar-recipes">
+        <div class="filter-toolbar">
+          <div>
+            <div class="filter-title">筛选配方记录</div>
+          </div>
+          <div class="filter-meta">${items.length} 条记录</div>
+        </div>
+        <div class="filter-grid filter-grid-recipes">
+          <label class="filter-field">
+            <span class="filter-label">结果状态</span>
+            <select class="input" id="prod-rec-status">
+              <option value="" ${status===''?'selected':''}>全部状态</option>
+              <option value="success" ${status==='success'?'selected':''}>成功</option>
+              <option value="failed" ${status==='failed'?'selected':''}>失败</option>
+              <option value="pending" ${status==='pending'?'selected':''}>待观察</option>
+            </select>
+          </label>
+          <label class="filter-field filter-field-search">
+            <span class="filter-label">原料/辅料</span>
+            <input class="input" id="prod-rec-material" list="material-list" placeholder="输入原料或辅料名称" value="${this.escapeHtml(material)}">
+          </label>
+          <label class="filter-field filter-field-range">
+            <span class="filter-label">试验日期</span>
+            <span class="range-control">
+              <input class="input" id="prod-rec-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
+              <span class="range-sep">至</span>
+              <input class="input" id="prod-rec-date-to" type="date" value="${this.escapeHtml(dateTo)}">
+            </span>
+          </label>
+          <label class="filter-field filter-field-range filter-field-rate">
+            <span class="filter-label">成功率</span>
+            <span class="range-control">
+              <input class="input input-short" id="prod-rec-min-rate" type="number" min="0" max="100" step="1" placeholder="最低" value="${minRate?Math.round(parseFloat(minRate)*100):''}">
+              <span class="range-sep">%</span>
+              <input class="input input-short" id="prod-rec-max-rate" type="number" min="0" max="100" step="1" placeholder="最高" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}">
+              <span class="range-sep">%</span>
+            </span>
+          </label>
+          <label class="filter-field filter-field-sort">
+            <span class="filter-label">排序</span>
+            <span class="sort-control">
+              <select class="input" id="prod-rec-sort">
+                <option value="试验日期" ${sort==='试验日期'?'selected':''}>试验日期</option>
+                <option value="成功率" ${sort==='成功率'?'selected':''}>成功率</option>
+                <option value="创建时间" ${sort==='创建时间'?'selected':''}>创建时间</option>
+                <option value="品号" ${sort==='品号'?'selected':''}>品号</option>
+              </select>
+              <select class="input" id="prod-rec-order">
+                <option value="desc" ${order==='desc'?'selected':''}>降序</option>
+                <option value="asc" ${order==='asc'?'selected':''}>升序</option>
+              </select>
+            </span>
+          </label>
+          <div class="filter-actions">
+            <button class="btn btn-primary" onclick="app.searchProductRecipes(${productId})">查询</button>
+            <button class="btn btn-secondary" onclick="location.hash='#/products/${productId}?tab=recipes'">重置</button>
+          </div>
+          <datalist id="material-list"></datalist>
+        </div>
       </div>`;
 
     if (items.length === 0) {
@@ -880,30 +931,67 @@ const app = {
         <div><h1 class="page-title">成功率查询</h1><p class="page-subtitle">按配方组合查看试验成功率</p></div>
       </div>
       ${this.successRateHelp()}
-      <div class="filter-bar">
-        <select class="input" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
-        <input class="input" id="sr-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
-        <input class="input" id="sr-date-to" type="date" value="${this.escapeHtml(dateTo)}">
-        <select class="input" id="sr-status">
-          <option value="" ${status===''?'selected':''}>成功/失败</option>
-          <option value="success" ${status==='success'?'selected':''}>只看成功</option>
-          <option value="failed" ${status==='failed'?'selected':''}>只看失败</option>
-        </select>
-        <input class="input input-short" id="sr-min-rate" type="number" min="0" max="100" step="1" placeholder="最低%" value="${minRate?Math.round(parseFloat(minRate)*100):''}">
-        <input class="input input-short" id="sr-max-rate" type="number" min="0" max="100" step="1" placeholder="最高%" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}">
-        <input class="input input-short" id="sr-min-trials" type="number" min="1" step="1" placeholder="最少次数" value="${this.escapeHtml(minTrials)}">
-        <select class="input" id="sr-sort">
-          <option value="成功率" ${sort==='成功率'?'selected':''}>按成功率</option>
-          <option value="试验次数" ${sort==='试验次数'?'selected':''}>按试验次数</option>
-          <option value="品号" ${sort==='品号'?'selected':''}>按品号</option>
-          <option value="创建时间" ${sort==='创建时间'?'selected':''}>按创建时间</option>
-        </select>
-        <select class="input" id="sr-order">
-          <option value="desc" ${order==='desc'?'selected':''}>降序</option>
-          <option value="asc" ${order==='asc'?'selected':''}>升序</option>
-        </select>
-        <button class="btn btn-secondary" onclick="app.searchSuccessRate()">查询</button>
-        <button class="btn btn-secondary" onclick="location.hash='#/success-rate'">重置</button>
+      <div class="filter-bar filter-bar-success">
+        <div class="filter-toolbar">
+          <div>
+            <div class="filter-title">筛选成功率</div>
+          </div>
+          <div class="filter-meta">${items.length} 组配方</div>
+        </div>
+        <div class="filter-grid filter-grid-success">
+          <label class="filter-field filter-field-product">
+            <span class="filter-label">产品</span>
+            <select class="input" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
+          </label>
+          <label class="filter-field filter-field-range">
+            <span class="filter-label">试验日期</span>
+            <span class="range-control">
+              <input class="input" id="sr-date-from" type="date" value="${this.escapeHtml(dateFrom)}">
+              <span class="range-sep">至</span>
+              <input class="input" id="sr-date-to" type="date" value="${this.escapeHtml(dateTo)}">
+            </span>
+          </label>
+          <label class="filter-field">
+            <span class="filter-label">结果</span>
+            <select class="input" id="sr-status">
+              <option value="" ${status===''?'selected':''}>成功/失败</option>
+              <option value="success" ${status==='success'?'selected':''}>只看成功</option>
+              <option value="failed" ${status==='failed'?'selected':''}>只看失败</option>
+            </select>
+          </label>
+          <label class="filter-field filter-field-range filter-field-rate">
+            <span class="filter-label">成功率区间</span>
+            <span class="range-control">
+              <input class="input input-short" id="sr-min-rate" type="number" min="0" max="100" step="1" placeholder="最低" value="${minRate?Math.round(parseFloat(minRate)*100):''}">
+              <span class="range-sep">%</span>
+              <input class="input input-short" id="sr-max-rate" type="number" min="0" max="100" step="1" placeholder="最高" value="${maxRate?Math.round(parseFloat(maxRate)*100):''}">
+              <span class="range-sep">%</span>
+            </span>
+          </label>
+          <label class="filter-field">
+            <span class="filter-label">最少试验</span>
+            <input class="input input-short" id="sr-min-trials" type="number" min="1" step="1" placeholder="次数" value="${this.escapeHtml(minTrials)}">
+          </label>
+          <label class="filter-field filter-field-sort">
+            <span class="filter-label">排序</span>
+            <span class="sort-control">
+              <select class="input" id="sr-sort">
+                <option value="成功率" ${sort==='成功率'?'selected':''}>成功率</option>
+                <option value="试验次数" ${sort==='试验次数'?'selected':''}>试验次数</option>
+                <option value="品号" ${sort==='品号'?'selected':''}>品号</option>
+                <option value="创建时间" ${sort==='创建时间'?'selected':''}>创建时间</option>
+              </select>
+              <select class="input" id="sr-order">
+                <option value="desc" ${order==='desc'?'selected':''}>降序</option>
+                <option value="asc" ${order==='asc'?'selected':''}>升序</option>
+              </select>
+            </span>
+          </label>
+          <div class="filter-actions">
+            <button class="btn btn-primary" onclick="app.searchSuccessRate()">查询</button>
+            <button class="btn btn-secondary" onclick="location.hash='#/success-rate'">重置</button>
+          </div>
+        </div>
       </div>
       <div class="table-wrap"><table><thead>
         <tr><th>产品</th><th>配方组合</th><th>试验次数</th><th>成功次数</th><th>成功率</th><th>操作</th></tr>
