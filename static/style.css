@@ -707,14 +707,14 @@ td button + button {
 
 /* ===== Login ===== */
 .login-shell {
-  min-height: calc(100vh - 52px);
+  min-height: calc(100vh - 48px);
   display: grid;
   place-items: center;
   padding: 42px 18px;
 }
 
 .login-card {
-  width: min(430px, 100%);
+  width: min(520px, 100%);
   padding: 30px;
   text-align: left;
   background:
@@ -1449,8 +1449,6 @@ td:first-child a { color: #0f766e; }
   background: #eeeeea;
 }
 
-.login-shell { min-height: calc(100vh - 64px); }
-
 .login-card {
   background:
     radial-gradient(circle at 78% 12%, rgba(15, 118, 110, 0.14), transparent 32%),
@@ -1845,17 +1843,6 @@ body {
 
 .products-panel .panel-heading {
   margin-bottom: 16px;
-}
-
-.login-shell {
-  min-height: calc(100vh - 48px);
-  display: grid;
-  place-items: center;
-  padding: 42px 18px;
-}
-
-.login-card {
-  width: min(520px, 100%);
 }
 
 .login-card .page-hero {
