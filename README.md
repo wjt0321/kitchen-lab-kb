@@ -28,11 +28,11 @@
 
 ### 登录页
 
-![登录页](docs/screenshots/redesign-login.png)
+![登录页](docs/screenshots/codex-login.png)
 
 ### 产品工作台
 
-![产品工作台](docs/screenshots/redesign-products.png)
+![产品工作台](docs/screenshots/codex-products.png)
 
 ### 成功率查询
 
