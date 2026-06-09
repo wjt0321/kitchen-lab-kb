@@ -119,10 +119,13 @@ const app = {
       </div>`;
     document.getElementById('modal-confirm').onclick = async () => {
       try {
-        await onConfirm();
+        const result = await onConfirm();
+        if (result === false) return;
         if (closeOnConfirm) this.closeModal();
       } catch (error) {
-        console.warn(error);
+        if (!error || error.expected !== true) {
+          console.warn(error);
+        }
       }
     };
   },
@@ -788,7 +791,7 @@ const app = {
     if (!delta) {
       errEl.textContent = '库存变动数量必须是非零数字';
       errEl.classList.remove('hide');
-      throw new Error('inventory modal validation');
+      return false;
     }
     const r = await this.post(`/api/products/${id}/inventory-adjust`, {
       变动数量: delta,
@@ -797,11 +800,11 @@ const app = {
     if (!r.ok) {
       errEl.textContent = r.error || '库存调整失败';
       errEl.classList.remove('hide');
-      throw new Error('inventory modal submit failed');
+      return false;
     }
     this.toast(`库存已更新: ${r.data.变动后}`);
     this.closeModal();
-    this.route();
+    return this.route();
   },
 
   // ===== Recipe form =====

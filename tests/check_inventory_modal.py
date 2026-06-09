@@ -33,6 +33,8 @@ def main():
             browser = p.chromium.launch(headless=True)
             context = browser.new_context(storage_state=storage_state)
             page = context.new_page()
+            console_messages = []
+            page.on("console", lambda msg: console_messages.append((msg.type, msg.text)))
             page.goto(f"{base_url}/#/products/{product_id}", wait_until="networkidle")
 
             assert page.locator(".page-hero-title").first.text_content().strip() == f"{code} 库存弹层产品"
@@ -50,13 +52,18 @@ def main():
                 page.locator("#inventory-error").text_content().strip()
                 == "库存变动数量必须是非零数字"
             )
+            assert not [msg for msg in console_messages if msg[0] == "warning"]
 
             page.locator("#inventory-delta").fill("-2")
             page.locator("#inventory-reason").fill("试验消耗")
-            page.locator("#modal-confirm").click()
+            with page.expect_response(
+                lambda response: response.request.method == "POST"
+                and response.url.endswith(f"/api/products/{product_id}/inventory-adjust")
+                and response.status == 200
+            ):
+                page.locator("#modal-confirm").click()
             page.locator(".inventory-modal").wait_for(state="hidden")
-            page.locator(".page-hero-subtitle").first.wait_for()
-            assert "当前数量 3" in page.locator(".page-hero-subtitle").first.text_content()
+            page.locator(".page-hero-subtitle").filter(has_text="当前数量 3").first.wait_for()
             assert page.locator("text=试验消耗").count() >= 1
 
             context.close()
