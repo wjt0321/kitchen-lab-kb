@@ -1,5 +1,6 @@
 """Checks for DESIGN-v2 feature completion gaps."""
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -51,6 +52,16 @@ def create_recipe(client, product_id, date, status, material_name="水", recipe_
     )
     assert response.status_code == 200, response.text
     return response.json()["data"]["id"]
+
+
+def extract_js_method_block(js, method_name, next_method_name):
+    start_marker = f"  {method_name}"
+    end_marker = f"\n  {next_method_name}"
+    start = js.find(start_marker)
+    assert start != -1, f"missing {method_name} block"
+    end = js.find(end_marker, start)
+    assert end != -1, f"missing {method_name} end boundary"
+    return js[start:end]
 
 
 def check_success_rate_filters_and_sort(client):
@@ -152,10 +163,35 @@ def check_recipe_excel_includes_product_id(client, tmpdir):
 def check_frontend_design_contracts():
     with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "app.js"), encoding="utf-8") as f:
         js = f.read()
+    with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "style.css"), encoding="utf-8") as f:
+        css = f.read()
+    with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "base.html"), encoding="utf-8") as f:
+        base_html = f.read()
+    frontend_bundle = "\n".join([js, css, base_html])
 
     required_snippets = [
         "routeFromLocation",
         "location.pathname",
+        "renderPageHero",
+        "products-hero-search",
+        "products-panel",
+        "detail-workspace",
+        "detail-primary",
+        "detail-secondary",
+        "openInventoryModal",
+        "submitInventoryModal",
+        "inventory-modal",
+        "inventory-delta",
+        "inventory-reason",
+        "inventory-error",
+        "recipe-editor-shell",
+        "recipe-section",
+        "recipe-status-panel",
+        "success-rate-hero",
+        "success-rate-panel",
+        "renderEmptyState",
+        "workspace-shell",
+        "system-actions",
         "prod-rec-status",
         "prod-rec-date-from",
         "prod-rec-date-to",
@@ -173,9 +209,35 @@ def check_frontend_design_contracts():
         "app.archiveProduct",
         "app.restoreProduct",
         "app.deleteProduct",
+        "modal-body",
+        "toast-success",
+        "toast-error",
+        "export-menu",
+        "workspace-topbar",
+        "renderExportMenu",
+        "copyText",
     ]
     for snippet in required_snippets:
-        assert snippet in js, f"missing frontend contract: {snippet}"
+        assert snippet in frontend_bundle, f"missing frontend contract: {snippet}"
+    recipe_detail_body = extract_js_method_block(js, "async renderRecipeDetail(el, id)", "deleteRecipe(")
+    hero_match = re.search(r"const hero = this\.renderPageHero\(\{(?P<body>[\s\S]*?)\}\);", recipe_detail_body)
+    assert hero_match, "missing renderRecipeDetail hero block"
+    hero_body = hero_match.group("body")
+    assert "escapeHtml" not in hero_body, "recipe detail hero should rely on renderPageHero escaping"
+    assert "app.copyText(" in recipe_detail_body, "recipe detail should copy hash via helper"
+    assert "navigator.clipboard.writeText" not in recipe_detail_body, "recipe detail should not inline clipboard calls"
+
+    history_panel_match = re.search(
+        r"<h3>同组合历史</h3>[\s\S]*?\$\{(?P<expr>historyItems\.length\s*\?[\s\S]*?)\}",
+        recipe_detail_body,
+    )
+    assert history_panel_match, "history panel should be controlled by historyItems.length"
+
+    toast_body = extract_js_method_block(js, "toast(msg, type='success')", "async copyText(")
+    assert "toast-title" in toast_body and "toast-message" in toast_body
+
+    topbar_body = extract_js_method_block(js, "renderTopbarActions()", "renderSidebarNav(")
+    assert "renderExportMenu()" in topbar_body
 
 
 def main():

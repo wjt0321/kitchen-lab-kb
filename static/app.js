@@ -6,10 +6,13 @@ const app = {
   init() {
     this.user = localStorage.getItem('username') || '';
     const route = this.routeFromLocation();
+    if (this.user && route.path === '/login') {
+      location.hash = '#/products';
+    }
     if (!this.user && route.path !== '/login') {
       location.hash = '#/login';
     }
-    this.updateTopbar();
+    this.updateShell();
     this.route();
     window.addEventListener('hashchange', () => this.route());
     document.addEventListener('click', (e) => {
@@ -18,20 +21,33 @@ const app = {
         menu.classList.add('hide');
       }
     });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      this.closeModal();
+      this.closeExportMenu();
+    });
   },
 
-  updateTopbar() {
+  updateShell() {
     const route = this.routeFromLocation();
-    const el = document.getElementById('current-user');
-    if (el) el.textContent = this.user || '';
-    const nav = document.getElementById('topbar-nav');
-    if (nav) {
-      nav.querySelectorAll('a').forEach(a => {
-        a.classList.toggle('active', route.path.startsWith(a.getAttribute('href').replace('#', '')));
-      });
+    const sidebar = document.getElementById('sidebar');
+    const topbar = document.getElementById('topbar');
+    const shell = document.getElementById('app-shell');
+    const loggedIn = Boolean(this.user);
+
+    if (sidebar) {
+      sidebar.innerHTML = loggedIn ? this.renderSidebarNav(route.path) : '';
+      sidebar.classList.toggle('hide', !loggedIn);
     }
-    const bar = document.getElementById('topbar');
-    if (bar) bar.style.display = route.path === '/login' ? 'none' : 'flex';
+
+    if (topbar) {
+      topbar.innerHTML = loggedIn ? this.renderTopbarActions() : '';
+      topbar.classList.toggle('hide', route.path === '/login');
+    }
+
+    if (shell) {
+      shell.classList.toggle('workspace-shell-guest', !loggedIn);
+    }
   },
 
   routeFromLocation() {
@@ -46,7 +62,11 @@ const app = {
   route() {
     const { path, params } = this.routeFromLocation();
     this.currentPage = path;
-    this.updateTopbar();
+    if (path === '/login' && this.user) {
+      location.hash = '#/products';
+      return;
+    }
+    this.updateShell();
 
     const appEl = document.getElementById('app');
     if (!appEl) return;
@@ -62,7 +82,13 @@ const app = {
     else if (path.match(/^\/recipes\/\d+\/edit$/)) this.renderRecipeForm(appEl, parseInt(path.split('/')[2]));
     else if (path.match(/^\/recipes\/\d+$/)) this.renderRecipeDetail(appEl, parseInt(path.split('/')[2]));
     else if (path === '/success-rate') this.renderSuccessRate(appEl, params);
-    else { appEl.innerHTML = '<div class="empty-state"><h3>页面不存在</h3></div>'; }
+    else {
+      appEl.innerHTML = this.renderEmptyState({
+        title: '页面不存在',
+        body: '请从左侧导航重新选择工作区页面。',
+        action: '<button class="btn btn-primary" onclick="location.hash=\'#/products\'">返回产品工作台</button>',
+      });
+    }
   },
 
   // ===== API =====
@@ -80,41 +106,156 @@ const app = {
   // ===== UI helpers =====
   toast(msg, type='success') {
     const box = document.getElementById('toast-container');
+    if (!box) return;
+    const titleMap = { success: '操作完成', error: '操作失败', info: '系统提示' };
     const div = document.createElement('div');
     div.className = `toast toast-${type}`;
-    div.textContent = msg;
+    div.setAttribute('role', 'status');
+    div.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    div.innerHTML = `
+      <div class="toast-title">${this.escapeHtml(titleMap[type] || titleMap.info)}</div>
+      <div class="toast-message">${this.escapeHtml(msg)}</div>
+    `;
     box.appendChild(div);
-    setTimeout(() => div.remove(), 2500);
+    setTimeout(() => div.remove(), 2600);
   },
 
-  modal(title, body, onConfirm, confirmText='确认', isDanger=false) {
+  async copyText(text, successMsg='已复制', errorMsg='复制失败') {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast(successMsg);
+      return true;
+    } catch (error) {
+      this.toast(errorMsg, 'error');
+      return false;
+    }
+  },
+
+  modal(title, body, onConfirm, confirmText='确认', isDanger=false, options = {}) {
     const box = document.getElementById('modal-container');
+    const isHtml = options.allowHtml === true;
+    const closeOnConfirm = options.closeOnConfirm !== false;
     box.innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)app.closeModal()">
         <div class="modal">
           <div class="modal-title">${this.escapeHtml(title)}</div>
-          <div class="modal-body">${this.escapeHtml(body)}</div>
+          <div class="modal-body">${isHtml ? body : this.escapeHtml(body)}</div>
           <div class="modal-footer">
             <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
             <button class="btn ${isDanger?'btn-danger':'btn-primary'}" id="modal-confirm">${this.escapeHtml(confirmText)}</button>
           </div>
         </div>
       </div>`;
-    document.getElementById('modal-confirm').onclick = () => { onConfirm(); this.closeModal(); };
+    document.getElementById('modal-confirm').onclick = async () => {
+      try {
+        const result = await onConfirm();
+        if (result === false) return;
+        if (closeOnConfirm) this.closeModal();
+      } catch (error) {
+        if (!error || error.expected !== true) {
+          console.warn(error);
+        }
+      }
+    };
   },
 
   closeModal() {
     document.getElementById('modal-container').innerHTML = '';
   },
 
+  closeExportMenu() {
+    document.getElementById('export-menu')?.classList.add('hide');
+  },
+
   toggleExportMenu() {
-    document.getElementById('export-menu').classList.toggle('hide');
+    document.getElementById('export-menu')?.classList.toggle('hide');
+  },
+
+  renderExportMenu() {
+    return `
+      <div id="export-menu" class="export-menu hide">
+        <div class="export-menu-title">导出与模板</div>
+        <button type="button" onclick="app.exportExcel('products')">导出产品列表</button>
+        <button type="button" onclick="app.exportExcel('recipes')">导出配方记录</button>
+        <button type="button" onclick="app.exportExcel('success_rate')">导出成功率</button>
+        <button type="button" onclick="app.exportJson()">导出 JSON</button>
+        <button type="button" onclick="app.exportTemplate('products')">产品导入模板</button>
+        <button type="button" onclick="app.exportTemplate('recipes')">配方导入模板</button>
+      </div>
+    `;
+  },
+
+  renderSidebarNav(path) {
+    return `
+      <div class="sidebar-brand">
+        <span class="brand-mark">KL</span>
+        <div>
+          <div class="sidebar-brand-title">样品库知识库</div>
+          <div class="sidebar-brand-subtitle">Kitchen Lab</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="${path.startsWith('/products') ? 'active' : ''}" href="#/products">产品</a>
+        <a class="${path.startsWith('/success-rate') ? 'active' : ''}" href="#/success-rate">成功率</a>
+      </nav>
+    `;
+  },
+
+  renderTopbarActions() {
+    return `
+      <div class="topbar-spacer"></div>
+      <div class="system-actions">
+        <div class="system-group">
+          <span class="current-user">${this.escapeHtml(this.user)}</span>
+        </div>
+        <div class="system-group">
+          <button class="btn btn-secondary" onclick="app.backup()">备份</button>
+          <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
+          <button class="btn btn-secondary" onclick="app.importData()">导入</button>
+          <div class="menu-wrap">
+            <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
+            ${this.renderExportMenu()}
+          </div>
+          <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>
+        </div>
+      </div>
+    `;
+  },
+
+  renderPageHero({ kicker = '', title, subtitle = '', content = '', actions = '' }) {
+    return `
+      <section class="page-hero">
+        ${kicker ? `<div class="page-hero-kicker">${this.escapeHtml(kicker)}</div>` : ''}
+        <div class="page-hero-copy">
+          <h1 class="page-hero-title">${this.escapeHtml(title)}</h1>
+          ${subtitle ? `<p class="page-hero-subtitle">${this.escapeHtml(subtitle)}</p>` : ''}
+        </div>
+        ${content ? `<div class="page-hero-content">${content}</div>` : ''}
+        ${actions ? `<div class="page-hero-actions">${actions}</div>` : ''}
+      </section>
+    `;
+  },
+
+  renderEmptyState({ title, body, action = '', className = '' }) {
+    const classes = ['empty-state', className].filter(Boolean).join(' ');
+    return `
+      <div class="${classes}">
+        <h3>${this.escapeHtml(title)}</h3>
+        <p>${this.escapeHtml(body)}</p>
+        ${action}
+      </div>
+    `;
   },
 
   statusBadge(s) {
     const map = { active: ['活跃','badge-active'], archived: ['已归档','badge-archived'], success: ['成功','badge-success'], failed: ['失败','badge-failed'], pending: ['待观察','badge-pending'] };
     const [text, cls] = map[s] || [s,''];
     return `<span class="badge ${cls}">${this.escapeHtml(text)}</span>`;
+  },
+
+  statusText(s) {
+    const map = { active: '活跃', archived: '已归档', success: '成功', failed: '失败', pending: '待观察' };
+    return map[s] || s || '-';
   },
 
   successRateHelp() {
@@ -135,6 +276,25 @@ const app = {
   formatDate(d) {
     if (!d) return '-';
     return d.substring(0, 10);
+  },
+
+  renderIngredientRows(items = []) {
+    if (!items.length) {
+      return this.renderEmptyState({
+        title: '暂无记录',
+        body: '当前配方还没有这一类原料数据。',
+      });
+    }
+    return `
+      <div class="detail-ingredients">
+        ${items.map(m => `
+          <div class="detail-ingredient-row">
+            <span>${this.escapeHtml(m.名称)}</span>
+            <strong>${m.用量} ${this.escapeHtml(m.单位 || '')}</strong>
+          </div>
+        `).join('')}
+      </div>
+    `;
   },
 
   escapeHtml(value) {
@@ -175,15 +335,20 @@ const app = {
     const safeLast = this.escapeHtml(last);
     el.innerHTML = `
       <div class="login-shell">
-        <div class="card login-card">
-          <div class="login-kicker">Kitchen Lab</div>
-          <h2>样品库知识库</h2>
-          <p>研发样品与配方记录工具</p>
-          <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()">
-          <button class="btn btn-primary" onclick="app.login()">登录</button>
-          ${last?`<div class="login-last">上次登录: ${safeLast}</div>`:''}
+        <div class="login-card">
+          ${this.renderPageHero({
+            kicker: 'Kitchen Lab',
+            title: '样品库知识库',
+            subtitle: '研发样品、配方记录与成功率追踪工作台',
+          })}
+          <div class="login-form">
+            <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()">
+            <button class="btn btn-primary" onclick="app.login()">进入工作台</button>
+            ${last?`<div class="login-last">上次登录: ${safeLast}</div>`:''}
+          </div>
         </div>
       </div>`;
+    document.getElementById('login-user')?.focus();
   },
 
   async renderProducts(el, params) {
@@ -192,17 +357,25 @@ const app = {
     const page = parseInt(params.get('page') || '1');
     const safeQ = this.escapeHtml(q);
     const r = await this.get(`/api/products?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&page=${page}`);
-    if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>加载失败</h3></div>'; return; }
+    if (!r.ok) {
+      el.innerHTML = this.renderEmptyState({
+        title: '加载失败',
+        body: r.error || '产品列表暂时无法加载，请稍后重试。',
+      });
+      return;
+    }
     const { items, total, page_size } = r.data;
     const totalPages = Math.max(1, Math.ceil(total / page_size));
 
     let rows = '';
     if (items.length === 0) {
-      rows = `<tr><td colspan="8"><div class="empty-state">
-        <h3>${q?'没有找到匹配的产品':'暂无产品'}</h3>
-        <p>${q?'请尝试更换关键词,或清空筛选条件。':'还没有录入任何产品。先新建一个产品,再记录配方试验。'}</p>
-        ${q?`<button class="btn btn-primary" onclick="app.navProducts()">清空筛选</button>`:`<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`}
-      </div></td></tr>`;
+      rows = `<tr><td colspan="8">${this.renderEmptyState({
+        title: q ? '没有找到匹配的产品' : '暂无产品',
+        body: q ? '请尝试更换关键词，或清空筛选条件。' : '还没有录入任何产品。先新建一个产品，再记录配方试验。',
+        action: q
+          ? `<button class="btn btn-primary" onclick="location.hash='#/products'">清空筛选</button>`
+          : `<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`,
+      })}</td></tr>`;
     } else {
       rows = items.map(p => `
         <tr onclick="location.hash='#/products/${p.id}'" class="${p.状态==='archived'?'archived':''}">
@@ -227,43 +400,41 @@ const app = {
       `).join('');
     }
 
+    const hero = this.renderPageHero({
+      kicker: '产品工作台',
+      title: '查找、管理并追踪样品产品',
+      subtitle: '优先处理最常用的搜索、筛选和新建动作',
+      content: `
+        <div class="products-hero-search">
+          <input class="input" id="prod-q" placeholder="输入品号或品名" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
+          <select class="input" id="prod-status" onchange="app.searchProducts()">
+            <option value="active" ${status==='active'?'selected':''}>活跃</option>
+            <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
+            <option value="全部" ${status==='全部'?'selected':''}>全部</option>
+          </select>
+        </div>
+      `,
+      actions: `
+        <div class="products-hero-actions">
+          <button class="btn btn-secondary" onclick="location.hash='#/products'">重置</button>
+          <button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>
+        </div>
+      `,
+    });
+
     el.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">产品列表</h1>
-          <p class="page-subtitle">管理产品主数据、库存数量和配方记录</p>
-        </div>
-        <button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>
-      </div>
-      <div class="filter-bar filter-bar-products">
-        <div class="filter-toolbar">
+      ${hero}
+      <section class="card products-panel">
+        <div class="panel-heading">
           <div>
-            <div class="filter-title">筛选产品</div>
-          </div>
-          <div class="filter-meta">共 ${total} 条</div>
-        </div>
-        <div class="filter-grid filter-grid-products">
-          <label class="filter-field filter-field-search">
-            <span class="filter-label">关键词</span>
-            <input class="input" id="prod-q" placeholder="输入品号或品名" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
-          </label>
-          <label class="filter-field">
-            <span class="filter-label">状态</span>
-            <select class="input" id="prod-status" onchange="app.searchProducts()">
-              <option value="active" ${status==='active'?'selected':''}>活跃</option>
-              <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
-              <option value="全部" ${status==='全部'?'selected':''}>全部</option>
-            </select>
-          </label>
-          <div class="filter-actions">
-            <button class="btn btn-primary" onclick="app.searchProducts()">查询</button>
-            <button class="btn btn-secondary" onclick="app.navProducts()">重置</button>
+            <h3>产品列表</h3>
+            <p class="page-subtitle">共 ${total} 条记录，默认显示最活跃的产品数据。</p>
           </div>
         </div>
-      </div>
-      <div class="table-wrap"><table><thead>
-        <tr><th>品号</th><th>品名</th><th>规格</th><th>当前数量</th><th>状态</th><th>配方数</th><th>创建时间</th><th>操作</th></tr>
-      </thead><tbody>${rows}</tbody></table></div>
+        <div class="table-wrap"><table><thead>
+          <tr><th>品号</th><th>品名</th><th>规格</th><th>当前数量</th><th>状态</th><th>配方数</th><th>创建时间</th><th>操作</th></tr>
+        </thead><tbody>${rows}</tbody></table></div>
+      </section>
       ${total>page_size?`
       <div class="pagination">
         <span>共 ${total} 条</span>
@@ -347,7 +518,10 @@ const app = {
 
   async renderProductDetail(el, id, params = new URLSearchParams()) {
     const r = await this.get(`/api/products/${id}`);
-    if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>产品不存在</h3></div>'; return; }
+    if (!r.ok) {
+      el.innerHTML = this.renderEmptyState({ title: '产品不存在', body: '请返回产品列表重新选择。' });
+      return;
+    }
     const p = r.data;
     const showTab = params.get('tab') === 'success' ? 'success' : 'recipes';
     const movementRes = await this.get(`/api/products/${id}/inventory-movements`);
@@ -360,46 +534,81 @@ const app = {
         <td>${this.escapeHtml(m.原因 || '-')}</td>
         <td>${this.escapeHtml(m.created_by || '-')}</td>
       </tr>
-    `).join('') : `<tr><td colspan="5"><div class="empty-state empty-state-compact">暂无库存变动记录</div></td></tr>`;
+    `).join('') : `<tr><td colspan="5">${this.renderEmptyState({
+      title: '暂无库存变动记录',
+      body: '当前产品还没有库存调整历史。',
+      className: 'empty-state-compact',
+    })}</td></tr>`;
+
+    const hero = this.renderPageHero({
+      kicker: '产品详情',
+      title: `${p.品号} ${p.品名}`,
+      subtitle: `规格 ${p.规格} · 当前数量 ${p.当前数量}`,
+      actions: `
+        <div class="inline-actions">
+          ${p.状态 === 'active' ? `
+            <button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${p.id}'">新建配方</button>
+            <button class="btn btn-secondary" onclick="app.openInventoryModal(${p.id})">调整库存</button>
+            <button class="btn btn-secondary" onclick="location.hash='#/products/${p.id}/edit'">编辑</button>
+            <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id})">归档</button>
+          ` : `
+            <button class="btn btn-secondary" onclick="app.restoreProduct(${p.id})">恢复</button>
+            <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})">删除</button>
+          `}
+        </div>
+      `,
+    });
 
     el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / ${this.escapeHtml(p.品号)}</div>
-      <div class="card">
-        <div class="detail-head">
-          <div>
-            <h2>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</h2>
-            <div class="status-quiet">
-              规格: ${this.escapeHtml(p.规格)} &nbsp; 当前数量: ${p.当前数量} &nbsp; 状态: ${this.statusBadge(p.状态)}
+      ${hero}
+      <section class="detail-workspace">
+        <div class="detail-primary">
+          <section class="card detail-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>产品概览</h3>
+                <p class="page-subtitle">围绕当前库存、状态和试验记录进行集中操作。</p>
+              </div>
             </div>
-            ${p.备注?`<div class="status-quiet detail-note">备注: ${this.escapeHtml(p.备注)}</div>`:''}
-          </div>
-          <div class="inline-actions">
-            ${p.状态==='active'?`
-              <button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${p.id}'">新建配方</button>
-              <button class="btn btn-secondary" onclick="app.adjustInventory(${p.id})">调整库存</button>
-              <button class="btn btn-secondary" onclick="location.hash='#/products/${p.id}/edit'">编辑</button>
-              <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id})">归档</button>
-            `:`
-              <button class="btn btn-secondary" onclick="app.restoreProduct(${p.id})">恢复</button>
-              <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})">删除</button>
-            `}
-          </div>
+            <div class="detail-meta-list">
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">产品状态</span>
+                <div>${this.statusBadge(p.状态)}</div>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">规格</span>
+                <strong>${this.escapeHtml(p.规格)}</strong>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">当前数量</span>
+                <strong>${p.当前数量}</strong>
+              </div>
+            </div>
+            ${p.备注 ? `<div class="status-quiet detail-note">备注：${this.escapeHtml(p.备注)}</div>` : ''}
+          </section>
+          <section class="card detail-panel">
+            <div class="tabs detail-tabs">
+              <button class="tab ${showTab==='recipes'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=recipes'">配方记录</button>
+              <button class="tab ${showTab==='success'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=success'">成功率汇总</button>
+            </div>
+            <div id="product-tab-content"></div>
+          </section>
         </div>
-      </div>
-      <div class="card">
-        <div class="panel-heading">
-          <h3>库存流水</h3>
-          <button class="btn btn-secondary" onclick="app.adjustInventory(${p.id})">调整库存</button>
-        </div>
-        <div class="table-wrap"><table><thead>
-          <tr><th>时间</th><th>变动</th><th>库存</th><th>原因</th><th>操作人</th></tr>
-        </thead><tbody>${movementRows}</tbody></table></div>
-      </div>
-      <div class="tabs">
-        <button class="tab ${showTab==='recipes'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=recipes'">配方记录</button>
-        <button class="tab ${showTab==='success'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=success'">成功率汇总</button>
-      </div>
-      <div id="product-tab-content"></div>`;
+        <aside class="detail-secondary">
+          <section class="card detail-panel inventory-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>库存流水</h3>
+                <p class="page-subtitle">最近 5 次库存变动，优先展示调整原因和操作人。</p>
+              </div>
+              <button class="btn btn-secondary" onclick="app.openInventoryModal(${p.id})">调整库存</button>
+            </div>
+            <div class="table-wrap"><table><thead>
+              <tr><th>时间</th><th>变动</th><th>库存</th><th>原因</th><th>操作人</th></tr>
+            </thead><tbody>${movementRows}</tbody></table></div>
+          </section>
+        </aside>
+      </section>`;
 
     if (showTab === 'recipes') {
       await this.renderProductRecipes(id, params);
@@ -494,7 +703,11 @@ const app = {
       </div>`;
 
     if (items.length === 0) {
-      box.innerHTML = `${filters}<div class="empty-state"><h3>暂无配方记录</h3><p>这个产品还没有试验记录。可以新建一条配方,记录原料、辅料和试验结果。</p><button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">新建配方</button></div>`;
+      box.innerHTML = `${filters}${this.renderEmptyState({
+        title: '暂无配方记录',
+        body: '这个产品还没有试验记录。可以新建一条配方，记录原料、辅料和试验结果。',
+        action: `<button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">新建配方</button>`,
+      })}`;
       this.loadMaterialSuggestions();
       return;
     }
@@ -547,7 +760,10 @@ const app = {
     const items = r.data || [];
 
     if (items.length === 0) {
-      box.innerHTML = `<div class="empty-state"><h3>暂无成功率数据</h3><p>至少需要一条"成功"或"失败"的配方记录,才能计算成功率。待观察状态不会参与成功率计算。</p></div>`;
+      box.innerHTML = this.renderEmptyState({
+        title: '暂无成功率数据',
+        body: '至少需要一条成功或失败的配方记录，才能计算成功率。待观察状态不会参与成功率计算。',
+      });
       return;
     }
 
@@ -561,7 +777,10 @@ const app = {
           <td>${this.formatSuccessRate(item)}</td>
           <td><button class="btn btn-text" onclick="event.stopPropagation();app.toggleHashHistory(${productId}, '${item.配方hash}', '${rowId}')">展开历史</button></td>
         </tr>
-        <tr id="${rowId}" class="hide"><td colspan="5"><div class="empty-state" style="padding:16px;">正在加载历史记录……</div></td></tr>`;
+        <tr id="${rowId}" class="hide"><td colspan="5">${this.renderEmptyState({
+          title: '正在加载历史记录',
+          body: '请稍候，正在整理同组合试验明细。',
+        })}</td></tr>`;
     }).join('');
 
     box.innerHTML = `
@@ -574,12 +793,16 @@ const app = {
   async toggleHashHistory(productId, hash, rowId) {
     const row = document.getElementById(rowId);
     if (!row) return;
+    const colSpan = row.querySelector('td')?.colSpan || 5;
     row.classList.toggle('hide');
     if (row.classList.contains('hide') || row.dataset.loaded === '1') return;
 
     const r = await this.get(`/api/products/${productId}/recipes-by-hash/${hash}`);
     if (!r.ok) {
-      row.innerHTML = `<td colspan="5"><div class="empty-state" style="padding:16px;"><h3>历史记录加载失败</h3></div></td>`;
+      row.innerHTML = `<td colspan="${colSpan}">${this.renderEmptyState({
+        title: '历史记录加载失败',
+        body: '请稍后重试，或返回成功率列表重新展开。',
+      })}</td>`;
       return;
     }
     const items = r.data || [];
@@ -594,7 +817,7 @@ const app = {
     `).join('');
     row.dataset.loaded = '1';
     row.innerHTML = `
-      <td colspan="5">
+      <td colspan="${colSpan}">
         <div class="table-wrap"><table><thead>
           <tr><th>日期</th><th>状态</th><th>配方名称</th><th>用量</th><th>操作</th></tr>
         </thead><tbody>${rows}</tbody></table></div>
@@ -626,25 +849,49 @@ const app = {
     }, '确认删除', true);
   },
 
-  async adjustInventory(id) {
-    const rawDelta = prompt('请输入库存变动数量,消耗用负数');
-    if (rawDelta === null) return;
-    const delta = parseFloat(rawDelta);
+  openInventoryModal(id) {
+    const body = `
+      <div class="inventory-modal">
+        <label class="field-label" for="inventory-delta">变动数量</label>
+        <input id="inventory-delta" class="input" type="number" step="any" placeholder="消耗请填负数">
+        <label class="field-label" for="inventory-reason">变动原因</label>
+        <textarea id="inventory-reason" class="input" placeholder="请输入原因"></textarea>
+        <div id="inventory-error" class="field-error hide" role="alert"></div>
+      </div>
+    `;
+    this.modal('调整库存', body, () => this.submitInventoryModal(id), '确认调整', false, {
+      allowHtml: true,
+      closeOnConfirm: false,
+    });
+    document.getElementById('inventory-delta')?.focus();
+  },
+
+  async submitInventoryModal(id) {
+    const deltaInput = document.getElementById('inventory-delta');
+    const reasonInput = document.getElementById('inventory-reason');
+    const errEl = document.getElementById('inventory-error');
+    if (!deltaInput || !reasonInput || !errEl) throw new Error('inventory modal missing');
+    const delta = parseFloat(deltaInput.value || '0');
+    const reason = reasonInput.value.trim();
+    errEl.textContent = '';
+    errEl.classList.add('hide');
     if (!delta) {
-      this.toast('库存变动数量必须是非零数字', 'error');
-      return;
+      errEl.textContent = '库存变动数量必须是非零数字';
+      errEl.classList.remove('hide');
+      return false;
     }
-    const reason = prompt('请输入变动原因') || '';
     const r = await this.post(`/api/products/${id}/inventory-adjust`, {
       变动数量: delta,
       原因: reason,
     });
-    if (r.ok) {
-      this.toast(`库存已更新: ${r.data.变动后}`);
-      this.route();
-    } else {
-      this.toast(r.error || '库存调整失败', 'error');
+    if (!r.ok) {
+      errEl.textContent = r.error || '库存调整失败';
+      errEl.classList.remove('hide');
+      return false;
     }
+    this.toast(`库存已更新: ${r.data.变动后}`);
+    this.closeModal();
+    return this.route();
   },
 
   // ===== Recipe form =====
@@ -659,47 +906,67 @@ const app = {
     const productOptions = (prods.data?.items||[]).map(p => `<option value="${p.id}" ${p.id==data.产品id?'selected':''}>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</option>`).join('');
 
     const matRows = (data.原料辅料 && data.原料辅料.length) ? data.原料辅料.map((m,i) => this._matRow(i, m)).join('') : this._matRow(0, {类型:'原料'});
+    const hero = this.renderPageHero({
+      kicker: id ? '编辑配方' : '新建配方',
+      title: id ? '更新当前试验配方' : '记录新的试验配方',
+      subtitle: '按产品、原料组合和结果状态组织录入信息，方便后续成功率追踪。',
+    });
 
     el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${data.产品id}">${this.escapeHtml(data.品号||'')}</a> / ${id?'编辑配方':'新建配方'}</div>
-      <div class="card">
-        <h3>试验信息</h3>
-        <div class="form-grid">
-          <label>产品 <span style="color:var(--danger)">*</span></label>
-          <select class="input" id="rf-产品id">${productOptions}</select>
-          <label>试验日期 <span style="color:var(--danger)">*</span></label>
-          <input class="input" id="rf-试验日期" type="date" value="${this.escapeHtml(data.试验日期)}">
-          <label>配方名称</label>
-          <input class="input" id="rf-配方名称" value="${this.escapeHtml(data.配方名称||'')}">
-          <label>用了多少</label>
-          <input class="input" id="rf-用了多少" type="number" value="${data.用了多少||''}">
-        </div>
-      </div>
-      <div class="card">
-        <div class="panel-heading">
-          <h3>原料 / 辅料</h3>
-          <button class="btn btn-secondary" onclick="app.addMatRow()">添加行</button>
-        </div>
-        <div class="table-wrap"><table><thead>
-          <tr><th>类型</th><th>名称</th><th>用量</th><th>单位</th><th>操作</th></tr>
-        </thead><tbody id="mat-tbody">${matRows}</tbody></table></div>
-        <datalist id="material-list"></datalist>
-        <datalist id="unit-list"></datalist>
-        <div class="field-error hide" id="mat-error"></div>
-      </div>
-      <div class="card">
-        <h3>结果状态</h3>
-        <div class="radio-row">
-          <label><input type="radio" name="rf-状态" value="success" ${data.状态==='success'?'checked':''}> 成功</label>
-          <label><input type="radio" name="rf-状态" value="failed" ${data.状态==='failed'?'checked':''}> 失败</label>
-          <label><input type="radio" name="rf-状态" value="pending" ${data.状态==='pending'?'checked':''}> 待观察</label>
-        </div>
-        <label class="field-label">备注</label>
-        <textarea class="input" id="rf-备注">${this.escapeHtml(data.备注||'')}</textarea>
-        <div class="form-actions">
-          <button class="btn btn-secondary" onclick="history.back()">取消</button>
-          <button class="btn btn-primary" id="rf-save" onclick="app.saveRecipe(${id||0})">保存配方</button>
-        </div>
+      ${hero}
+      <div class="recipe-editor-shell">
+        <section class="card recipe-section">
+          <div class="panel-heading">
+            <div>
+              <h3>试验信息</h3>
+              <p class="page-subtitle">选择产品并记录本次试验日期、名称和总体用量。</p>
+            </div>
+          </div>
+          <div class="form-grid">
+            <label>产品 <span style="color:var(--danger)">*</span></label>
+            <select class="input" id="rf-产品id">${productOptions}</select>
+            <label>试验日期 <span style="color:var(--danger)">*</span></label>
+            <input class="input" id="rf-试验日期" type="date" value="${this.escapeHtml(data.试验日期)}">
+            <label>配方名称</label>
+            <input class="input" id="rf-配方名称" value="${this.escapeHtml(data.配方名称||'')}">
+            <label>用了多少</label>
+            <input class="input" id="rf-用了多少" type="number" value="${data.用了多少||''}">
+          </div>
+        </section>
+        <section class="card recipe-section">
+          <div class="panel-heading">
+            <div>
+              <h3>原料 / 辅料</h3>
+              <p class="page-subtitle">按试验录入组合，保留常用名称与单位建议。</p>
+            </div>
+            <button class="btn btn-secondary" onclick="app.addMatRow()">添加行</button>
+          </div>
+          <div class="table-wrap"><table><thead>
+            <tr><th>类型</th><th>名称</th><th>用量</th><th>单位</th><th>操作</th></tr>
+          </thead><tbody id="mat-tbody">${matRows}</tbody></table></div>
+          <datalist id="material-list"></datalist>
+          <datalist id="unit-list"></datalist>
+          <div class="field-error hide" id="mat-error"></div>
+        </section>
+        <section class="card recipe-section recipe-status-panel">
+          <div class="panel-heading">
+            <div>
+              <h3>结果状态</h3>
+              <p class="page-subtitle">记录本次试验结果，便于后续成功率统计与复测。</p>
+            </div>
+          </div>
+          <div class="radio-row">
+            <label><input type="radio" name="rf-状态" value="success" ${data.状态==='success'?'checked':''}> 成功</label>
+            <label><input type="radio" name="rf-状态" value="failed" ${data.状态==='failed'?'checked':''}> 失败</label>
+            <label><input type="radio" name="rf-状态" value="pending" ${data.状态==='pending'?'checked':''}> 待观察</label>
+          </div>
+          <label class="field-label">备注</label>
+          <textarea class="input" id="rf-备注">${this.escapeHtml(data.备注||'')}</textarea>
+          <div class="form-actions">
+            <button class="btn btn-secondary" onclick="history.back()">取消</button>
+            <button class="btn btn-primary" id="rf-save" onclick="app.saveRecipe(${id||0})">保存配方</button>
+          </div>
+        </section>
       </div>`;
     this.loadMaterialSuggestions();
   },
@@ -795,7 +1062,10 @@ const app = {
   // ===== Recipe detail =====
   async renderRecipeDetail(el, id) {
     const r = await this.get(`/api/recipes/${id}`);
-    if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>配方记录不存在</h3></div>'; return; }
+    if (!r.ok) {
+      el.innerHTML = this.renderEmptyState({ title: '配方记录不存在', body: '请返回上一级重新选择记录。' });
+      return;
+    }
     const d = r.data;
     const 原料 = (d.原料辅料||[]).filter(m=>m.类型==='原料');
     const 辅料 = (d.原料辅料||[]).filter(m=>m.类型==='辅料');
@@ -814,51 +1084,106 @@ const app = {
       </tr>
     `).join('');
 
-    el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / <a href="#/products/${d.产品id}">${this.escapeHtml(d.品号)}</a> / ${this.escapeHtml(d.配方名称||'配方详情')}</div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-          <div>
-            <h2 style="margin:0 0 8px;font-size:20px;">${this.escapeHtml(d.配方名称||'未命名配方')}</h2>
-            <div style="color:var(--text-sub);font-size:13px;">
-              状态: ${this.statusBadge(d.状态)} &nbsp; 日期: ${this.escapeHtml(d.试验日期)} &nbsp; 用量: ${d.用了多少||'-'} &nbsp; 创建人: ${this.escapeHtml(d.created_by||'-')}
-            </div>
-            <div style="margin-top:8px;">
-              <span class="hash">${d.配方hash}</span>
-              <button class="btn btn-text" style="height:24px;padding:0 6px;font-size:12px;" onclick="navigator.clipboard.writeText('${d.配方hash}');app.toast('已复制')">复制</button>
-            </div>
-          </div>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-secondary" onclick="app.duplicateRecipe(${d.id})">复制配方</button>
-            <button class="btn btn-secondary" onclick="location.hash='#/recipes/${d.id}/edit'">编辑</button>
-            <button class="btn btn-danger" onclick="app.deleteRecipe(${d.id})">删除</button>
-          </div>
+    const hero = this.renderPageHero({
+      kicker: '配方详情',
+      title: d.配方名称 || '未命名配方',
+      subtitle: `状态 ${this.statusText(d.状态)} · 日期 ${d.试验日期}`,
+      actions: `
+        <div class="inline-actions">
+          <button class="btn btn-primary" onclick="app.duplicateRecipe(${d.id})">复制配方</button>
+          <button class="btn btn-secondary" onclick="location.hash='#/recipes/${d.id}/edit'">编辑</button>
+          <button class="btn btn-danger" onclick="app.deleteRecipe(${d.id})">删除</button>
         </div>
-      </div>
-      ${原料.length?`
-      <div class="card" style="max-width:480px;">
-        <h3 style="margin:0 0 12px;font-size:16px;">原料</h3>
-        <table style="border:none;"><tbody>
-          ${原料.map(m=>`<tr><td style="border:none;padding:6px 0;">${this.escapeHtml(m.名称)}</td><td style="border:none;padding:6px 0;text-align:right;font-weight:600;">${m.用量} ${this.escapeHtml(m.单位)}</td></tr>`).join('')}
-        </tbody></table>
-      </div>`:''}
-      ${辅料.length?`
-      <div class="card" style="max-width:480px;">
-        <h3 style="margin:0 0 12px;font-size:16px;">辅料</h3>
-        <table style="border:none;"><tbody>
-          ${辅料.map(m=>`<tr><td style="border:none;padding:6px 0;">${this.escapeHtml(m.名称)}</td><td style="border:none;padding:6px 0;text-align:right;font-weight:600;">${m.用量} ${this.escapeHtml(m.单位)}</td></tr>`).join('')}
-        </tbody></table>
-      </div>`:''}
-      ${hashInfo?`
-      <div class="card">
-        <h3 style="margin:0 0 12px;font-size:16px;">同组合试验记录</h3>
-        <p style="margin:0 0 12px;color:var(--text-sub);font-size:13px;">
-          当前组合成功率: ${this.formatSuccessRate(hashInfo)} &nbsp; 试验 ${hashInfo.试验次数} 次 / 成功 ${hashInfo.成功次数} 次
-        </p>
-        <div class="table-wrap"><table><thead>
-          <tr><th>日期</th><th>状态</th><th>配方名称</th><th>用量</th><th>操作</th></tr>
-        </thead><tbody>${historyRows}</tbody></table></div>
-      </div>`:''}`;
+      `,
+    });
+
+    el.innerHTML = `
+      ${hero}
+      <div class="recipe-detail-shell">
+        <section class="card recipe-section">
+          <div class="panel-heading">
+            <div>
+              <h3>试验概览</h3>
+              <p class="page-subtitle">快速查看配方状态、用量、归属产品与创建信息。</p>
+            </div>
+          </div>
+          <div class="detail-meta-list">
+            <div class="detail-meta-item">
+              <span class="detail-meta-label">产品</span>
+              <strong>${this.escapeHtml(d.品号)} ${this.escapeHtml(d.品名)}</strong>
+            </div>
+            <div class="detail-meta-item">
+              <span class="detail-meta-label">状态</span>
+              <div>${this.statusBadge(d.状态)}</div>
+            </div>
+            <div class="detail-meta-item">
+              <span class="detail-meta-label">用了多少</span>
+              <strong>${d.用了多少 || '-'}</strong>
+            </div>
+            <div class="detail-meta-item">
+              <span class="detail-meta-label">创建人</span>
+              <strong>${this.escapeHtml(d.created_by || '-')}</strong>
+            </div>
+          </div>
+          <div class="recipe-hash-row">
+            <span class="hash">${d.配方hash}</span>
+            <button class="btn btn-text" onclick="app.copyText('${d.配方hash}', '配方哈希已复制', '复制配方哈希失败')">复制哈希</button>
+          </div>
+        </section>
+        <section class="card recipe-section">
+          <div class="panel-heading">
+            <div>
+              <h3>原料 / 辅料</h3>
+              <p class="page-subtitle">拆分展示当前配方组合，方便对比同组合历史。</p>
+            </div>
+          </div>
+          <div class="recipe-material-grid">
+            <div class="material-block">
+              <h4>原料</h4>
+              ${this.renderIngredientRows(原料)}
+            </div>
+            <div class="material-block">
+              <h4>辅料</h4>
+              ${this.renderIngredientRows(辅料)}
+            </div>
+          </div>
+          ${d.备注 ? `<div class="status-quiet detail-note">备注：${this.escapeHtml(d.备注)}</div>` : ''}
+        </section>
+        <section class="card recipe-section">
+          <div class="panel-heading">
+            <div>
+              <h3>同组合历史</h3>
+              <p class="page-subtitle">追踪同一配方组合的试验次数、成功次数与历史记录。</p>
+            </div>
+          </div>
+          ${hashInfo ? `
+            <div class="recipe-history-summary">
+              <div class="detail-meta-list">
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">当前组合成功率</span>
+                  <div>${this.formatSuccessRate(hashInfo)}</div>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">试验次数</span>
+                  <strong>${hashInfo.试验次数}</strong>
+                </div>
+                <div class="detail-meta-item">
+                  <span class="detail-meta-label">成功次数</span>
+                  <strong>${hashInfo.成功次数}</strong>
+                </div>
+              </div>
+            </div>
+          ` : ''}
+          ${historyItems.length ? `
+            <div class="table-wrap"><table><thead>
+              <tr><th>日期</th><th>状态</th><th>配方名称</th><th>用量</th><th>操作</th></tr>
+            </thead><tbody>${historyRows}</tbody></table></div>
+          ` : this.renderEmptyState({
+            title: '暂无同组合历史',
+            body: '当前配方还没有足够的成功/失败记录用于对比。',
+          })}
+        </section>
+      </div>`;
   },
 
   deleteRecipe(id) {
@@ -908,12 +1233,29 @@ const app = {
     if (order) query.set('order', order);
     const r = await this.get(`/api/success-rate${query.toString()?'?'+query.toString():''}`);
     const items = r.data || [];
+    const hero = this.renderPageHero({
+      kicker: '成功率工作台',
+      title: '按配方组合查看试验成功率',
+      subtitle: '优先定位试验次数足够、成功率更稳定的组合。',
+      content: `
+        <div class="success-rate-hero">
+          <select class="input" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
+          <input class="input" id="sr-min-trials" type="number" min="1" step="1" placeholder="最少试验次数" value="${this.escapeHtml(minTrials)}">
+          <button class="btn btn-secondary" onclick="location.hash='#/success-rate'">重置</button>
+          <button class="btn btn-primary" onclick="app.searchSuccessRate()">查询</button>
+        </div>
+      `,
+    });
 
     let rows = '';
     if (items.length === 0) {
-      rows = `<tr><td colspan="6"><div class="empty-state"><h3>暂无成功率数据</h3><p>至少需要一条"成功"或"失败"的配方记录,才能计算成功率。待观察状态不会参与成功率计算。</p></div></td></tr>`;
+      rows = `<tr><td colspan="6">${this.renderEmptyState({
+        title: '暂无成功率数据',
+        body: '至少需要一条成功或失败的配方记录，才能计算成功率。待观察状态不会参与统计。',
+      })}</td></tr>`;
     } else {
-      rows = items.map(item => {
+      rows = items.map((item, idx) => {
+        const rowId = `success-history-${idx}`;
         return `
           <tr>
             <td>${this.escapeHtml(item.品号)} ${this.escapeHtml(item.品名)}</td>
@@ -921,15 +1263,20 @@ const app = {
             <td>${item.试验次数}</td>
             <td>${item.成功次数}</td>
             <td>${this.formatSuccessRate(item)}</td>
-            <td><a href="#/products/${item.产品id}?tab=success">查看</a></td>
-          </tr>`;
+            <td>
+              <button class="btn btn-text" onclick="event.stopPropagation();app.toggleHashHistory(${item.产品id}, '${item.配方hash}', '${rowId}')">展开历史</button>
+              <a href="#/products/${item.产品id}?tab=success">查看</a>
+            </td>
+          </tr>
+          <tr id="${rowId}" class="hide"><td colspan="6">${this.renderEmptyState({
+            title: '正在加载历史记录',
+            body: '请稍候，正在整理组合明细。',
+          })}</td></tr>`;
       }).join('');
     }
 
     el.innerHTML = `
-      <div class="page-header">
-        <div><h1 class="page-title">成功率查询</h1><p class="page-subtitle">按配方组合查看试验成功率</p></div>
-      </div>
+      ${hero}
       ${this.successRateHelp()}
       <div class="filter-bar filter-bar-success">
         <div class="filter-toolbar">
@@ -939,10 +1286,6 @@ const app = {
           <div class="filter-meta">${items.length} 组配方</div>
         </div>
         <div class="filter-grid filter-grid-success">
-          <label class="filter-field filter-field-product">
-            <span class="filter-label">产品</span>
-            <select class="input" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
-          </label>
           <label class="filter-field filter-field-range">
             <span class="filter-label">试验日期</span>
             <span class="range-control">
@@ -968,10 +1311,6 @@ const app = {
               <span class="range-sep">%</span>
             </span>
           </label>
-          <label class="filter-field">
-            <span class="filter-label">最少试验</span>
-            <input class="input input-short" id="sr-min-trials" type="number" min="1" step="1" placeholder="次数" value="${this.escapeHtml(minTrials)}">
-          </label>
           <label class="filter-field filter-field-sort">
             <span class="filter-label">排序</span>
             <span class="sort-control">
@@ -993,9 +1332,17 @@ const app = {
           </div>
         </div>
       </div>
-      <div class="table-wrap"><table><thead>
-        <tr><th>产品</th><th>配方组合</th><th>试验次数</th><th>成功次数</th><th>成功率</th><th>操作</th></tr>
-      </thead><tbody>${rows}</tbody></table></div>`;
+      <section class="card success-rate-panel">
+        <div class="panel-heading">
+          <div>
+            <h3>组合成功率</h3>
+            <p class="page-subtitle">支持按产品、日期、成功率区间和最少试验次数筛选。</p>
+          </div>
+        </div>
+        <div class="table-wrap"><table><thead>
+          <tr><th>产品</th><th>配方组合</th><th>试验次数</th><th>成功次数</th><th>成功率</th><th>操作</th></tr>
+        </thead><tbody>${rows}</tbody></table></div>
+      </section>`;
   },
 
   searchSuccessRate() {
@@ -1035,6 +1382,7 @@ const app = {
   },
 
   async downloadExport(url, fallbackName) {
+    this.closeExportMenu();
     try {
       const res = await fetch(url, { headers: { 'X-Username': encodeURIComponent(this.user || '') } });
       if (!res.ok) {
@@ -1065,18 +1413,22 @@ const app = {
   },
 
   async exportExcel(type) {
+    this.closeExportMenu();
     await this.downloadExport('/api/export/excel?type=' + encodeURIComponent(type), `${type}.xlsx`);
   },
 
   async exportTemplate(type) {
+    this.closeExportMenu();
     await this.downloadExport('/api/export/template?type=' + encodeURIComponent(type), `${type}_import_template.xlsx`);
   },
 
   async exportJson() {
+    this.closeExportMenu();
     await this.downloadExport('/api/export/json', 'export.json');
   },
 
   importData() {
+    this.closeExportMenu();
     const input = document.getElementById('import-file');
     if (!input) return;
     input.value = '';
