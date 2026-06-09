@@ -7,37 +7,15 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<div class="topbar" id="topbar">
-  <div class="topbar-left">
-    <span class="topbar-brand"><span class="brand-mark">KL</span><span>样品库知识库</span></span>
-    <nav class="topbar-nav" id="topbar-nav">
-      <a href="#/products">产品</a>
-      <a href="#/success-rate">成功率查询</a>
-    </nav>
-  </div>
-  <div class="topbar-right">
-    <span id="current-user" class="current-user"></span>
-    <button class="btn btn-secondary" onclick="app.backup()">备份</button>
-    <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
-    <button class="btn btn-secondary" onclick="app.importData()">导入</button>
-    <div class="menu-wrap">
-      <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
-      <div id="export-menu" class="export-menu hide">
-        <a href="javascript:app.exportExcel('products')">导出产品列表</a>
-        <a href="javascript:app.exportExcel('recipes')">导出配方记录</a>
-        <a href="javascript:app.exportExcel('success_rate')">导出成功率</a>
-        <a href="javascript:app.exportJson()">导出 JSON</a>
-        <a href="javascript:app.exportTemplate('products')">产品导入模板</a>
-        <a href="javascript:app.exportTemplate('recipes')">配方导入模板</a>
-      </div>
-    </div>
-    <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>
+<div id="app-shell" class="workspace-shell">
+  <aside id="sidebar" class="workspace-sidebar"></aside>
+  <div class="workspace-main">
+    <header id="topbar" class="workspace-topbar"></header>
+    <div id="toast-container"></div>
+    <div id="modal-container"></div>
+    <main id="app" class="workspace-content"></main>
   </div>
 </div>
-
-<div id="toast-container"></div>
-<div id="modal-container"></div>
-<div id="app" class="container"></div>
 
 <script src="/static/app.js"></script>
 <script>

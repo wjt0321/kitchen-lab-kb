@@ -9,7 +9,7 @@ const app = {
     if (!this.user && route.path !== '/login') {
       location.hash = '#/login';
     }
-    this.updateTopbar();
+    this.updateShell();
     this.route();
     window.addEventListener('hashchange', () => this.route());
     document.addEventListener('click', (e) => {
@@ -20,18 +20,26 @@ const app = {
     });
   },
 
-  updateTopbar() {
+  updateShell() {
     const route = this.routeFromLocation();
-    const el = document.getElementById('current-user');
-    if (el) el.textContent = this.user || '';
-    const nav = document.getElementById('topbar-nav');
-    if (nav) {
-      nav.querySelectorAll('a').forEach(a => {
-        a.classList.toggle('active', route.path.startsWith(a.getAttribute('href').replace('#', '')));
-      });
+    const sidebar = document.getElementById('sidebar');
+    const topbar = document.getElementById('topbar');
+    const shell = document.getElementById('app-shell');
+    const loggedIn = Boolean(this.user);
+
+    if (sidebar) {
+      sidebar.innerHTML = loggedIn ? this.renderSidebarNav(route.path) : '';
+      sidebar.classList.toggle('hide', !loggedIn);
     }
-    const bar = document.getElementById('topbar');
-    if (bar) bar.style.display = route.path === '/login' ? 'none' : 'flex';
+
+    if (topbar) {
+      topbar.innerHTML = loggedIn ? this.renderTopbarActions() : '';
+      topbar.classList.toggle('hide', route.path === '/login');
+    }
+
+    if (shell) {
+      shell.classList.toggle('workspace-shell-guest', !loggedIn);
+    }
   },
 
   routeFromLocation() {
@@ -46,7 +54,7 @@ const app = {
   route() {
     const { path, params } = this.routeFromLocation();
     this.currentPage = path;
-    this.updateTopbar();
+    this.updateShell();
 
     const appEl = document.getElementById('app');
     if (!appEl) return;
@@ -108,7 +116,59 @@ const app = {
   },
 
   toggleExportMenu() {
-    document.getElementById('export-menu').classList.toggle('hide');
+    document.getElementById('export-menu')?.classList.toggle('hide');
+  },
+
+  renderSidebarNav(path) {
+    return `
+      <div class="sidebar-brand">
+        <span class="brand-mark">KL</span>
+        <div>
+          <div class="sidebar-brand-title">样品库知识库</div>
+          <div class="sidebar-brand-subtitle">Kitchen Lab</div>
+        </div>
+      </div>
+      <nav class="sidebar-nav">
+        <a class="${path.startsWith('/products') ? 'active' : ''}" href="#/products">产品</a>
+        <a class="${path.startsWith('/success-rate') ? 'active' : ''}" href="#/success-rate">成功率</a>
+      </nav>
+    `;
+  },
+
+  renderTopbarActions() {
+    return `
+      <div class="topbar-spacer"></div>
+      <div class="system-actions">
+        <span class="current-user">${this.escapeHtml(this.user)}</span>
+        <button class="btn btn-secondary" onclick="app.backup()">备份</button>
+        <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
+        <button class="btn btn-secondary" onclick="app.importData()">导入</button>
+        <div class="menu-wrap">
+          <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
+          <div id="export-menu" class="export-menu hide">
+            <a href="javascript:app.exportExcel('products')">导出产品列表</a>
+            <a href="javascript:app.exportExcel('recipes')">导出配方记录</a>
+            <a href="javascript:app.exportExcel('success_rate')">导出成功率</a>
+            <a href="javascript:app.exportJson()">导出 JSON</a>
+            <a href="javascript:app.exportTemplate('products')">产品导入模板</a>
+            <a href="javascript:app.exportTemplate('recipes')">配方导入模板</a>
+          </div>
+        </div>
+        <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>
+      </div>
+    `;
+  },
+
+  renderPageHero({ title, subtitle = '', actions = '' }) {
+    return `
+      <section class="page-hero">
+        <div class="page-hero-copy">
+          <h1 class="page-hero-title">${this.escapeHtml(title)}</h1>
+          ${subtitle ? `<p class="page-hero-subtitle">${this.escapeHtml(subtitle)}</p>` : ''}
+        </div>
+        ${actions ? `<div class="page-hero-actions">${actions}</div>` : ''}
+      </section>
+    `;
   },
 
   statusBadge(s) {
@@ -227,14 +287,14 @@ const app = {
       `).join('');
     }
 
+    const hero = this.renderPageHero({
+      title: '产品列表',
+      subtitle: '管理产品主数据、库存数量和配方记录',
+      actions: `<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`,
+    });
+
     el.innerHTML = `
-      <div class="page-header">
-        <div>
-          <h1 class="page-title">产品列表</h1>
-          <p class="page-subtitle">管理产品主数据、库存数量和配方记录</p>
-        </div>
-        <button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>
-      </div>
+      ${hero}
       <div class="filter-bar filter-bar-products">
         <div class="filter-toolbar">
           <div>
