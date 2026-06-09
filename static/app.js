@@ -1111,6 +1111,8 @@ const app = {
                 </div>
               </div>
             </div>
+          ` : ''}
+          ${historyItems.length ? `
             <div class="table-wrap"><table><thead>
               <tr><th>日期</th><th>状态</th><th>配方名称</th><th>用量</th><th>操作</th></tr>
             </thead><tbody>${historyRows}</tbody></table></div>

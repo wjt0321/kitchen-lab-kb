@@ -1,5 +1,6 @@
 """Checks for DESIGN-v2 feature completion gaps."""
 import os
+import re
 import sqlite3
 import sys
 import tempfile
@@ -196,8 +197,26 @@ def check_frontend_design_contracts():
     ]
     for snippet in required_snippets:
         assert snippet in js, f"missing frontend contract: {snippet}"
-    assert "title: this.escapeHtml(d.配方名称 || '未命名配方')" not in js
-    assert "subtitle: `状态 ${this.statusText(d.状态)} · 日期 ${this.escapeHtml(d.试验日期)}`" not in js
+    recipe_detail_match = re.search(
+        r"async renderRecipeDetail\(el, id\)\s*\{(?P<body>[\s\S]*?)\n  \},\n\n  deleteRecipe",
+        js,
+    )
+    assert recipe_detail_match, "missing renderRecipeDetail block"
+    recipe_detail_body = recipe_detail_match.group("body")
+
+    hero_match = re.search(
+        r"const hero = this\.renderPageHero\(\{(?P<body>[\s\S]*?)\n    \}\);",
+        recipe_detail_body,
+    )
+    assert hero_match, "missing renderRecipeDetail hero block"
+    hero_body = hero_match.group("body")
+    assert "escapeHtml" not in hero_body, "recipe detail hero should rely on renderPageHero escaping"
+
+    history_panel_match = re.search(
+        r"<h3>同组合历史</h3>[\s\S]*?\$\{(?P<expr>historyItems\.length\s*\?[\s\S]*?)\}\s*</section>",
+        recipe_detail_body,
+    )
+    assert history_panel_match, "history panel should be controlled by historyItems.length"
 
 
 def main():
