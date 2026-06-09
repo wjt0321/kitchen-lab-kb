@@ -156,6 +156,11 @@ def check_frontend_design_contracts():
     required_snippets = [
         "routeFromLocation",
         "location.pathname",
+        "renderPageHero",
+        "products-hero-search",
+        "products-panel",
+        "workspace-shell",
+        "system-actions",
         "prod-rec-status",
         "prod-rec-date-from",
         "prod-rec-date-to",

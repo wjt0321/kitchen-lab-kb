@@ -13,9 +13,11 @@ def main():
             login_input_count = page.locator("#login-user").count()
             login_shell_count = page.locator(".login-shell").count()
             login_card_count = page.locator(".login-card").count()
+            login_form_count = page.locator(".login-form").count()
             login_title_count = page.locator(
                 ".login-card .page-hero-title, .login-card h2"
             ).count()
+            login_button_count = page.get_by_role("button", name="进入工作台").count()
             topbar_display = page.locator("#topbar").evaluate(
                 "el => getComputedStyle(el).display"
             )
@@ -24,7 +26,9 @@ def main():
         assert login_input_count == 1, "login input should render on first load"
         assert login_shell_count == 1, "login shell should render on first load"
         assert login_card_count == 1, "login card should render on first load"
+        assert login_form_count == 1, "login form should render on first load"
         assert login_title_count == 1, "login title should render on first load"
+        assert login_button_count == 1, "workspace entry button should render on first load"
         assert topbar_display == "none", "topbar should be hidden on login page"
 
 

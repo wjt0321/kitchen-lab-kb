@@ -32,6 +32,10 @@ def assert_workspace_shell(page):
     assert page.locator(".workspace-sidebar").count() == 1
     assert page.locator(".workspace-main").count() == 1
     assert page.locator(".page-hero").count() >= 1
+    assert page.locator(".page-hero-title").count() >= 1
+    assert page.locator(".products-hero-search #prod-q").count() == 1
+    assert page.locator(".products-hero-actions .btn-primary").count() == 1
+    assert page.locator(".products-panel .table-wrap").count() == 1
     assert page.locator(".system-actions").count() == 1
 
 
@@ -45,7 +49,7 @@ def main():
             page = context.new_page()
             page.goto(f"{base_url}/login", wait_until="networkidle")
             page.locator("#login-user").fill("planner")
-            page.get_by_role("button", name="登录").click()
+            page.get_by_role("button", name="进入工作台").click()
             page.wait_for_url(re.compile(r".+#/products$"))
             page.wait_for_load_state("networkidle")
             assert_workspace_shell(page)

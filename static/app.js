@@ -166,15 +166,27 @@ const app = {
     `;
   },
 
-  renderPageHero({ title, subtitle = '', actions = '' }) {
+  renderPageHero({ kicker = '', title, subtitle = '', content = '', actions = '' }) {
     return `
       <section class="page-hero">
+        ${kicker ? `<div class="page-hero-kicker">${this.escapeHtml(kicker)}</div>` : ''}
         <div class="page-hero-copy">
           <h1 class="page-hero-title">${this.escapeHtml(title)}</h1>
           ${subtitle ? `<p class="page-hero-subtitle">${this.escapeHtml(subtitle)}</p>` : ''}
         </div>
+        ${content ? `<div class="page-hero-content">${content}</div>` : ''}
         ${actions ? `<div class="page-hero-actions">${actions}</div>` : ''}
       </section>
+    `;
+  },
+
+  renderEmptyState({ title, body, action = '' }) {
+    return `
+      <div class="empty-state">
+        <h3>${this.escapeHtml(title)}</h3>
+        <p>${this.escapeHtml(body)}</p>
+        ${action}
+      </div>
     `;
   },
 
@@ -242,15 +254,20 @@ const app = {
     const safeLast = this.escapeHtml(last);
     el.innerHTML = `
       <div class="login-shell">
-        <div class="card login-card">
-          <div class="login-kicker">Kitchen Lab</div>
-          <h2>样品库知识库</h2>
-          <p>研发样品与配方记录工具</p>
-          <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()">
-          <button class="btn btn-primary" onclick="app.login()">登录</button>
-          ${last?`<div class="login-last">上次登录: ${safeLast}</div>`:''}
+        <div class="login-card">
+          ${this.renderPageHero({
+            kicker: 'Kitchen Lab',
+            title: '样品库知识库',
+            subtitle: '研发样品、配方记录与成功率追踪工作台',
+          })}
+          <div class="login-form">
+            <input id="login-user" class="input" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()">
+            <button class="btn btn-primary" onclick="app.login()">进入工作台</button>
+            ${last?`<div class="login-last">上次登录: ${safeLast}</div>`:''}
+          </div>
         </div>
       </div>`;
+    document.getElementById('login-user')?.focus();
   },
 
   async renderProducts(el, params) {
@@ -259,17 +276,25 @@ const app = {
     const page = parseInt(params.get('page') || '1');
     const safeQ = this.escapeHtml(q);
     const r = await this.get(`/api/products?q=${encodeURIComponent(q)}&status=${encodeURIComponent(status)}&page=${page}`);
-    if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>加载失败</h3></div>'; return; }
+    if (!r.ok) {
+      el.innerHTML = this.renderEmptyState({
+        title: '加载失败',
+        body: r.error || '产品列表暂时无法加载，请稍后重试。',
+      });
+      return;
+    }
     const { items, total, page_size } = r.data;
     const totalPages = Math.max(1, Math.ceil(total / page_size));
 
     let rows = '';
     if (items.length === 0) {
-      rows = `<tr><td colspan="8"><div class="empty-state">
-        <h3>${q?'没有找到匹配的产品':'暂无产品'}</h3>
-        <p>${q?'请尝试更换关键词,或清空筛选条件。':'还没有录入任何产品。先新建一个产品,再记录配方试验。'}</p>
-        ${q?`<button class="btn btn-primary" onclick="app.navProducts()">清空筛选</button>`:`<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`}
-      </div></td></tr>`;
+      rows = `<tr><td colspan="8">${this.renderEmptyState({
+        title: q ? '没有找到匹配的产品' : '暂无产品',
+        body: q ? '请尝试更换关键词，或清空筛选条件。' : '还没有录入任何产品。先新建一个产品，再记录配方试验。',
+        action: q
+          ? `<button class="btn btn-primary" onclick="location.hash='#/products'">清空筛选</button>`
+          : `<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`,
+      })}</td></tr>`;
     } else {
       rows = items.map(p => `
         <tr onclick="location.hash='#/products/${p.id}'" class="${p.状态==='archived'?'archived':''}">
@@ -295,42 +320,40 @@ const app = {
     }
 
     const hero = this.renderPageHero({
-      title: '产品列表',
-      subtitle: '管理产品主数据、库存数量和配方记录',
-      actions: `<button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>`,
+      kicker: '产品工作台',
+      title: '查找、管理并追踪样品产品',
+      subtitle: '优先处理最常用的搜索、筛选和新建动作',
+      content: `
+        <div class="products-hero-search">
+          <input class="input" id="prod-q" placeholder="输入品号或品名" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
+          <select class="input" id="prod-status" onchange="app.searchProducts()">
+            <option value="active" ${status==='active'?'selected':''}>活跃</option>
+            <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
+            <option value="全部" ${status==='全部'?'selected':''}>全部</option>
+          </select>
+        </div>
+      `,
+      actions: `
+        <div class="products-hero-actions">
+          <button class="btn btn-secondary" onclick="location.hash='#/products'">重置</button>
+          <button class="btn btn-primary" onclick="location.hash='#/products/new'">新建产品</button>
+        </div>
+      `,
     });
 
     el.innerHTML = `
       ${hero}
-      <div class="filter-bar filter-bar-products">
-        <div class="filter-toolbar">
+      <section class="card products-panel">
+        <div class="panel-heading">
           <div>
-            <div class="filter-title">筛选产品</div>
-          </div>
-          <div class="filter-meta">共 ${total} 条</div>
-        </div>
-        <div class="filter-grid filter-grid-products">
-          <label class="filter-field filter-field-search">
-            <span class="filter-label">关键词</span>
-            <input class="input" id="prod-q" placeholder="输入品号或品名" value="${safeQ}" onkeydown="if(event.key==='Enter')app.searchProducts()">
-          </label>
-          <label class="filter-field">
-            <span class="filter-label">状态</span>
-            <select class="input" id="prod-status" onchange="app.searchProducts()">
-              <option value="active" ${status==='active'?'selected':''}>活跃</option>
-              <option value="archived" ${status==='archived'?'selected':''}>已归档</option>
-              <option value="全部" ${status==='全部'?'selected':''}>全部</option>
-            </select>
-          </label>
-          <div class="filter-actions">
-            <button class="btn btn-primary" onclick="app.searchProducts()">查询</button>
-            <button class="btn btn-secondary" onclick="app.navProducts()">重置</button>
+            <h3>产品列表</h3>
+            <p class="page-subtitle">共 ${total} 条记录，默认显示最活跃的产品数据。</p>
           </div>
         </div>
-      </div>
-      <div class="table-wrap"><table><thead>
-        <tr><th>品号</th><th>品名</th><th>规格</th><th>当前数量</th><th>状态</th><th>配方数</th><th>创建时间</th><th>操作</th></tr>
-      </thead><tbody>${rows}</tbody></table></div>
+        <div class="table-wrap"><table><thead>
+          <tr><th>品号</th><th>品名</th><th>规格</th><th>当前数量</th><th>状态</th><th>配方数</th><th>创建时间</th><th>操作</th></tr>
+        </thead><tbody>${rows}</tbody></table></div>
+      </section>
       ${total>page_size?`
       <div class="pagination">
         <span>共 ${total} 条</span>
