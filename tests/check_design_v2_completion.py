@@ -54,6 +54,16 @@ def create_recipe(client, product_id, date, status, material_name="水", recipe_
     return response.json()["data"]["id"]
 
 
+def extract_js_method_block(js, method_name, next_method_name):
+    start_marker = f"  {method_name}"
+    end_marker = f"\n  {next_method_name}"
+    start = js.find(start_marker)
+    assert start != -1, f"missing {method_name} block"
+    end = js.find(end_marker, start)
+    assert end != -1, f"missing {method_name} end boundary"
+    return js[start:end]
+
+
 def check_success_rate_filters_and_sort(client):
     product_id = create_product(client, "P-SR-A", "成功率产品A")
     other_product_id = create_product(client, "P-SR-B", "成功率产品B")
@@ -204,38 +214,30 @@ def check_frontend_design_contracts():
         "toast-error",
         "export-menu",
         "workspace-topbar",
+        "renderExportMenu",
+        "copyText",
     ]
     for snippet in required_snippets:
         assert snippet in frontend_bundle, f"missing frontend contract: {snippet}"
-    recipe_detail_match = re.search(
-        r"async renderRecipeDetail\(el, id\)\s*\{(?P<body>[\s\S]*?)\n  \},\n\n  deleteRecipe",
-        js,
-    )
-    assert recipe_detail_match, "missing renderRecipeDetail block"
-    recipe_detail_body = recipe_detail_match.group("body")
-
-    hero_match = re.search(
-        r"const hero = this\.renderPageHero\(\{(?P<body>[\s\S]*?)\n    \}\);",
-        recipe_detail_body,
-    )
+    recipe_detail_body = extract_js_method_block(js, "async renderRecipeDetail(el, id)", "deleteRecipe(")
+    hero_match = re.search(r"const hero = this\.renderPageHero\(\{(?P<body>[\s\S]*?)\}\);", recipe_detail_body)
     assert hero_match, "missing renderRecipeDetail hero block"
     hero_body = hero_match.group("body")
     assert "escapeHtml" not in hero_body, "recipe detail hero should rely on renderPageHero escaping"
+    assert "app.copyText(" in recipe_detail_body, "recipe detail should copy hash via helper"
+    assert "navigator.clipboard.writeText" not in recipe_detail_body, "recipe detail should not inline clipboard calls"
 
     history_panel_match = re.search(
-        r"<h3>同组合历史</h3>[\s\S]*?\$\{(?P<expr>historyItems\.length\s*\?[\s\S]*?)\}\s*</section>",
+        r"<h3>同组合历史</h3>[\s\S]*?\$\{(?P<expr>historyItems\.length\s*\?[\s\S]*?)\}",
         recipe_detail_body,
     )
     assert history_panel_match, "history panel should be controlled by historyItems.length"
 
-    toast_match = re.search(r"toast\(msg,\s*type='success'\)\s*\{(?P<body>[\s\S]*?)\n  \},", js)
-    assert toast_match, "missing toast helper"
-    toast_body = toast_match.group("body")
+    toast_body = extract_js_method_block(js, "toast(msg, type='success')", "async copyText(")
     assert "toast-title" in toast_body and "toast-message" in toast_body
 
-    topbar_match = re.search(r"renderTopbarActions\(\)\s*\{(?P<body>[\s\S]*?)\n  \},", js)
-    assert topbar_match, "missing renderTopbarActions helper"
-    assert "renderExportMenu()" in topbar_match.group("body")
+    topbar_body = extract_js_method_block(js, "renderTopbarActions()", "renderSidebarNav(")
+    assert "renderExportMenu()" in topbar_body
 
 
 def main():

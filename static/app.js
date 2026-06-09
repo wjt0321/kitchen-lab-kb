@@ -120,6 +120,17 @@ const app = {
     setTimeout(() => div.remove(), 2600);
   },
 
+  async copyText(text, successMsg='已复制', errorMsg='复制失败') {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.toast(successMsg);
+      return true;
+    } catch (error) {
+      this.toast(errorMsg, 'error');
+      return false;
+    }
+  },
+
   modal(title, body, onConfirm, confirmText='确认', isDanger=false, options = {}) {
     const box = document.getElementById('modal-container');
     const isHtml = options.allowHtml === true;
@@ -1111,7 +1122,7 @@ const app = {
           </div>
           <div class="recipe-hash-row">
             <span class="hash">${d.配方hash}</span>
-            <button class="btn btn-text" onclick="navigator.clipboard.writeText('${d.配方hash}');app.toast('已复制')">复制哈希</button>
+            <button class="btn btn-text" onclick="app.copyText('${d.配方hash}', '配方哈希已复制', '复制配方哈希失败')">复制哈希</button>
           </div>
         </section>
         <section class="card recipe-section">
@@ -1252,7 +1263,10 @@ const app = {
               <a href="#/products/${item.产品id}?tab=success">查看</a>
             </td>
           </tr>
-          <tr id="${rowId}" class="hide"><td colspan="6"><div class="empty-state" style="padding:16px;">正在加载历史记录……</div></td></tr>`;
+          <tr id="${rowId}" class="hide"><td colspan="6">${this.renderEmptyState({
+            title: '正在加载历史记录',
+            body: '请稍候，正在整理组合明细。',
+          })}</td></tr>`;
       }).join('');
     }
 
@@ -1363,6 +1377,7 @@ const app = {
   },
 
   async downloadExport(url, fallbackName) {
+    this.closeExportMenu();
     try {
       const res = await fetch(url, { headers: { 'X-Username': encodeURIComponent(this.user || '') } });
       if (!res.ok) {
@@ -1393,18 +1408,22 @@ const app = {
   },
 
   async exportExcel(type) {
+    this.closeExportMenu();
     await this.downloadExport('/api/export/excel?type=' + encodeURIComponent(type), `${type}.xlsx`);
   },
 
   async exportTemplate(type) {
+    this.closeExportMenu();
     await this.downloadExport('/api/export/template?type=' + encodeURIComponent(type), `${type}_import_template.xlsx`);
   },
 
   async exportJson() {
+    this.closeExportMenu();
     await this.downloadExport('/api/export/json', 'export.json');
   },
 
   importData() {
+    this.closeExportMenu();
     const input = document.getElementById('import-file');
     if (!input) return;
     input.value = '';
