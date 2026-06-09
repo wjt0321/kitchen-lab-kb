@@ -24,6 +24,29 @@
 - 退出：页面右上角“退出”会确认后备份当前数据，并停止后台端口和 Python 进程。
 - 离线依赖：`dependencies/` 存放 Windows 迁移时可直接安装的依赖包，已覆盖 `requirements.txt` 中的顶层依赖。
 
+## 界面预览
+
+### 登录页
+
+![登录页](docs/screenshots/redesign-login.png)
+
+### 产品工作台
+
+![产品工作台](docs/screenshots/redesign-products.png)
+
+### 成功率查询
+
+![成功率查询](docs/screenshots/redesign-success-rate-menu.png)
+
+### 移动端适配
+
+<p>
+  <img src="docs/screenshots/redesign-mobile-login.png" alt="移动端登录页" width="45%">
+  <img src="docs/screenshots/redesign-mobile-products.png" alt="移动端产品列表" width="45%">
+</p>
+
+更多操作截图见 [`docs/screenshots/`](docs/screenshots/)，完整图文说明见 [`docs/兴达样品库知识库使用指南.docx`](docs/兴达样品库知识库使用指南.docx)。
+
 ## 快速启动
 
 Windows 日常使用推荐直接双击：
