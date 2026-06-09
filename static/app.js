@@ -236,9 +236,10 @@ const app = {
     `;
   },
 
-  renderEmptyState({ title, body, action = '' }) {
+  renderEmptyState({ title, body, action = '', className = '' }) {
+    const classes = ['empty-state', className].filter(Boolean).join(' ');
     return `
-      <div class="empty-state">
+      <div class="${classes}">
         <h3>${this.escapeHtml(title)}</h3>
         <p>${this.escapeHtml(body)}</p>
         ${action}
@@ -533,7 +534,11 @@ const app = {
         <td>${this.escapeHtml(m.原因 || '-')}</td>
         <td>${this.escapeHtml(m.created_by || '-')}</td>
       </tr>
-    `).join('') : `<tr><td colspan="5"><div class="empty-state empty-state-compact">暂无库存变动记录</div></td></tr>`;
+    `).join('') : `<tr><td colspan="5">${this.renderEmptyState({
+      title: '暂无库存变动记录',
+      body: '当前产品还没有库存调整历史。',
+      className: 'empty-state-compact',
+    })}</td></tr>`;
 
     const hero = this.renderPageHero({
       kicker: '产品详情',
