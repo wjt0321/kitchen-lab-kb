@@ -36,13 +36,13 @@
 
 ### 成功率查询
 
-![成功率查询](docs/screenshots/redesign-success-rate-menu.png)
+![成功率查询](docs/screenshots/codex-success-rate.png)
 
 ### 移动端适配
 
 <p>
-  <img src="docs/screenshots/redesign-mobile-login.png" alt="移动端登录页" width="45%">
-  <img src="docs/screenshots/redesign-mobile-products.png" alt="移动端产品列表" width="45%">
+  <img src="docs/screenshots/codex-mobile-login.png" alt="移动端登录页" width="45%">
+  <img src="docs/screenshots/codex-mobile-products.png" alt="移动端产品列表" width="45%">
 </p>
 
 更多操作截图见 [`docs/screenshots/`](docs/screenshots/)，完整图文说明见 [`docs/兴达样品库知识库使用指南.docx`](docs/兴达样品库知识库使用指南.docx)。
