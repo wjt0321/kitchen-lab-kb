@@ -1024,8 +1024,8 @@ const app = {
 
     const hero = this.renderPageHero({
       kicker: '配方详情',
-      title: this.escapeHtml(d.配方名称 || '未命名配方'),
-      subtitle: `状态 ${this.statusText(d.状态)} · 日期 ${this.escapeHtml(d.试验日期)}`,
+      title: d.配方名称 || '未命名配方',
+      subtitle: `状态 ${this.statusText(d.状态)} · 日期 ${d.试验日期}`,
       actions: `
         <div class="inline-actions">
           <button class="btn btn-primary" onclick="app.duplicateRecipe(${d.id})">复制配方</button>

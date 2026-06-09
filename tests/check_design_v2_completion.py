@@ -173,6 +173,7 @@ def check_frontend_design_contracts():
         "recipe-status-panel",
         "success-rate-hero",
         "success-rate-panel",
+        "renderEmptyState",
         "workspace-shell",
         "system-actions",
         "prod-rec-status",
@@ -195,6 +196,8 @@ def check_frontend_design_contracts():
     ]
     for snippet in required_snippets:
         assert snippet in js, f"missing frontend contract: {snippet}"
+    assert "title: this.escapeHtml(d.配方名称 || '未命名配方')" not in js
+    assert "subtitle: `状态 ${this.statusText(d.状态)} · 日期 ${this.escapeHtml(d.试验日期)}`" not in js
 
 
 def main():
