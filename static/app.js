@@ -102,20 +102,29 @@ const app = {
     setTimeout(() => div.remove(), 2500);
   },
 
-  modal(title, body, onConfirm, confirmText='确认', isDanger=false) {
+  modal(title, body, onConfirm, confirmText='确认', isDanger=false, options = {}) {
     const box = document.getElementById('modal-container');
+    const isHtml = options.allowHtml === true;
+    const closeOnConfirm = options.closeOnConfirm !== false;
     box.innerHTML = `
       <div class="modal-overlay" onclick="if(event.target===this)app.closeModal()">
         <div class="modal">
           <div class="modal-title">${this.escapeHtml(title)}</div>
-          <div class="modal-body">${this.escapeHtml(body)}</div>
+          <div class="modal-body">${isHtml ? body : this.escapeHtml(body)}</div>
           <div class="modal-footer">
             <button class="btn btn-secondary" onclick="app.closeModal()">取消</button>
             <button class="btn ${isDanger?'btn-danger':'btn-primary'}" id="modal-confirm">${this.escapeHtml(confirmText)}</button>
           </div>
         </div>
       </div>`;
-    document.getElementById('modal-confirm').onclick = () => { onConfirm(); this.closeModal(); };
+    document.getElementById('modal-confirm').onclick = async () => {
+      try {
+        await onConfirm();
+        if (closeOnConfirm) this.closeModal();
+      } catch (error) {
+        console.warn(error);
+      }
+    };
   },
 
   closeModal() {
@@ -437,7 +446,10 @@ const app = {
 
   async renderProductDetail(el, id, params = new URLSearchParams()) {
     const r = await this.get(`/api/products/${id}`);
-    if (!r.ok) { el.innerHTML = '<div class="empty-state"><h3>产品不存在</h3></div>'; return; }
+    if (!r.ok) {
+      el.innerHTML = this.renderEmptyState({ title: '产品不存在', body: '请返回产品列表重新选择。' });
+      return;
+    }
     const p = r.data;
     const showTab = params.get('tab') === 'success' ? 'success' : 'recipes';
     const movementRes = await this.get(`/api/products/${id}/inventory-movements`);
@@ -452,44 +464,75 @@ const app = {
       </tr>
     `).join('') : `<tr><td colspan="5"><div class="empty-state empty-state-compact">暂无库存变动记录</div></td></tr>`;
 
+    const hero = this.renderPageHero({
+      kicker: '产品详情',
+      title: `${p.品号} ${p.品名}`,
+      subtitle: `规格 ${p.规格} · 当前数量 ${p.当前数量}`,
+      actions: `
+        <div class="inline-actions">
+          ${p.状态 === 'active' ? `
+            <button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${p.id}'">新建配方</button>
+            <button class="btn btn-secondary" onclick="app.openInventoryModal(${p.id})">调整库存</button>
+            <button class="btn btn-secondary" onclick="location.hash='#/products/${p.id}/edit'">编辑</button>
+            <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id})">归档</button>
+          ` : `
+            <button class="btn btn-secondary" onclick="app.restoreProduct(${p.id})">恢复</button>
+            <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})">删除</button>
+          `}
+        </div>
+      `,
+    });
+
     el.innerHTML = `
-      <div class="breadcrumb"><a href="#/products">产品列表</a> / ${this.escapeHtml(p.品号)}</div>
-      <div class="card">
-        <div class="detail-head">
-          <div>
-            <h2>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</h2>
-            <div class="status-quiet">
-              规格: ${this.escapeHtml(p.规格)} &nbsp; 当前数量: ${p.当前数量} &nbsp; 状态: ${this.statusBadge(p.状态)}
+      ${hero}
+      <section class="detail-workspace">
+        <div class="detail-primary">
+          <section class="card detail-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>产品概览</h3>
+                <p class="page-subtitle">围绕当前库存、状态和试验记录进行集中操作。</p>
+              </div>
             </div>
-            ${p.备注?`<div class="status-quiet detail-note">备注: ${this.escapeHtml(p.备注)}</div>`:''}
-          </div>
-          <div class="inline-actions">
-            ${p.状态==='active'?`
-              <button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${p.id}'">新建配方</button>
-              <button class="btn btn-secondary" onclick="app.adjustInventory(${p.id})">调整库存</button>
-              <button class="btn btn-secondary" onclick="location.hash='#/products/${p.id}/edit'">编辑</button>
-              <button class="btn btn-subtle-danger" onclick="app.archiveProduct(${p.id})">归档</button>
-            `:`
-              <button class="btn btn-secondary" onclick="app.restoreProduct(${p.id})">恢复</button>
-              <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})">删除</button>
-            `}
-          </div>
+            <div class="detail-meta-list">
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">产品状态</span>
+                <div>${this.statusBadge(p.状态)}</div>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">规格</span>
+                <strong>${this.escapeHtml(p.规格)}</strong>
+              </div>
+              <div class="detail-meta-item">
+                <span class="detail-meta-label">当前数量</span>
+                <strong>${p.当前数量}</strong>
+              </div>
+            </div>
+            ${p.备注 ? `<div class="status-quiet detail-note">备注：${this.escapeHtml(p.备注)}</div>` : ''}
+          </section>
+          <section class="card detail-panel">
+            <div class="tabs detail-tabs">
+              <button class="tab ${showTab==='recipes'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=recipes'">配方记录</button>
+              <button class="tab ${showTab==='success'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=success'">成功率汇总</button>
+            </div>
+            <div id="product-tab-content"></div>
+          </section>
         </div>
-      </div>
-      <div class="card">
-        <div class="panel-heading">
-          <h3>库存流水</h3>
-          <button class="btn btn-secondary" onclick="app.adjustInventory(${p.id})">调整库存</button>
-        </div>
-        <div class="table-wrap"><table><thead>
-          <tr><th>时间</th><th>变动</th><th>库存</th><th>原因</th><th>操作人</th></tr>
-        </thead><tbody>${movementRows}</tbody></table></div>
-      </div>
-      <div class="tabs">
-        <button class="tab ${showTab==='recipes'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=recipes'">配方记录</button>
-        <button class="tab ${showTab==='success'?'active':''}" onclick="location.hash='#/products/${p.id}?tab=success'">成功率汇总</button>
-      </div>
-      <div id="product-tab-content"></div>`;
+        <aside class="detail-secondary">
+          <section class="card detail-panel inventory-panel">
+            <div class="panel-heading">
+              <div>
+                <h3>库存流水</h3>
+                <p class="page-subtitle">最近 5 次库存变动，优先展示调整原因和操作人。</p>
+              </div>
+              <button class="btn btn-secondary" onclick="app.openInventoryModal(${p.id})">调整库存</button>
+            </div>
+            <div class="table-wrap"><table><thead>
+              <tr><th>时间</th><th>变动</th><th>库存</th><th>原因</th><th>操作人</th></tr>
+            </thead><tbody>${movementRows}</tbody></table></div>
+          </section>
+        </aside>
+      </section>`;
 
     if (showTab === 'recipes') {
       await this.renderProductRecipes(id, params);
@@ -716,25 +759,49 @@ const app = {
     }, '确认删除', true);
   },
 
-  async adjustInventory(id) {
-    const rawDelta = prompt('请输入库存变动数量,消耗用负数');
-    if (rawDelta === null) return;
-    const delta = parseFloat(rawDelta);
+  openInventoryModal(id) {
+    const body = `
+      <div class="inventory-modal">
+        <label class="field-label" for="inventory-delta">变动数量</label>
+        <input id="inventory-delta" class="input" type="number" step="any" placeholder="消耗请填负数">
+        <label class="field-label" for="inventory-reason">变动原因</label>
+        <textarea id="inventory-reason" class="input" placeholder="请输入原因"></textarea>
+        <div id="inventory-error" class="field-error hide" role="alert"></div>
+      </div>
+    `;
+    this.modal('调整库存', body, () => this.submitInventoryModal(id), '确认调整', false, {
+      allowHtml: true,
+      closeOnConfirm: false,
+    });
+    document.getElementById('inventory-delta')?.focus();
+  },
+
+  async submitInventoryModal(id) {
+    const deltaInput = document.getElementById('inventory-delta');
+    const reasonInput = document.getElementById('inventory-reason');
+    const errEl = document.getElementById('inventory-error');
+    if (!deltaInput || !reasonInput || !errEl) throw new Error('inventory modal missing');
+    const delta = parseFloat(deltaInput.value || '0');
+    const reason = reasonInput.value.trim();
+    errEl.textContent = '';
+    errEl.classList.add('hide');
     if (!delta) {
-      this.toast('库存变动数量必须是非零数字', 'error');
-      return;
+      errEl.textContent = '库存变动数量必须是非零数字';
+      errEl.classList.remove('hide');
+      throw new Error('inventory modal validation');
     }
-    const reason = prompt('请输入变动原因') || '';
     const r = await this.post(`/api/products/${id}/inventory-adjust`, {
       变动数量: delta,
       原因: reason,
     });
-    if (r.ok) {
-      this.toast(`库存已更新: ${r.data.变动后}`);
-      this.route();
-    } else {
-      this.toast(r.error || '库存调整失败', 'error');
+    if (!r.ok) {
+      errEl.textContent = r.error || '库存调整失败';
+      errEl.classList.remove('hide');
+      throw new Error('inventory modal submit failed');
     }
+    this.toast(`库存已更新: ${r.data.变动后}`);
+    this.closeModal();
+    this.route();
   },
 
   // ===== Recipe form =====
