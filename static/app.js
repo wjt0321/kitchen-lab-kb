@@ -6,6 +6,9 @@ const app = {
   init() {
     this.user = localStorage.getItem('username') || '';
     const route = this.routeFromLocation();
+    if (this.user && route.path === '/login') {
+      location.hash = '#/products';
+    }
     if (!this.user && route.path !== '/login') {
       location.hash = '#/login';
     }
@@ -54,6 +57,10 @@ const app = {
   route() {
     const { path, params } = this.routeFromLocation();
     this.currentPage = path;
+    if (path === '/login' && this.user) {
+      location.hash = '#/products';
+      return;
+    }
     this.updateShell();
 
     const appEl = document.getElementById('app');

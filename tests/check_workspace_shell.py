@@ -27,6 +27,7 @@ def assert_shell_style_contract():
 
 
 def assert_workspace_shell(page):
+    page.locator(".page-hero").first.wait_for()
     assert page.locator(".workspace-shell").count() == 1
     assert page.locator(".workspace-sidebar").count() == 1
     assert page.locator(".workspace-main").count() == 1
@@ -54,6 +55,13 @@ def main():
             cold_start_page.wait_for_load_state("networkidle")
             assert_workspace_shell(cold_start_page)
             cold_start_page.close()
+
+            relogin_page = context.new_page()
+            relogin_page.goto(f"{base_url}/login", wait_until="networkidle")
+            relogin_page.wait_for_url(re.compile(r".+#/products$"))
+            relogin_page.wait_for_load_state("networkidle")
+            assert_workspace_shell(relogin_page)
+            relogin_page.close()
 
             context.close()
             browser.close()
