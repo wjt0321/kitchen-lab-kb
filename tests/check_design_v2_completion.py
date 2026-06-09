@@ -153,6 +153,11 @@ def check_recipe_excel_includes_product_id(client, tmpdir):
 def check_frontend_design_contracts():
     with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "app.js"), encoding="utf-8") as f:
         js = f.read()
+    with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "static", "style.css"), encoding="utf-8") as f:
+        css = f.read()
+    with open(os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "base.html"), encoding="utf-8") as f:
+        base_html = f.read()
+    frontend_bundle = "\n".join([js, css, base_html])
 
     required_snippets = [
         "routeFromLocation",
@@ -194,9 +199,14 @@ def check_frontend_design_contracts():
         "app.archiveProduct",
         "app.restoreProduct",
         "app.deleteProduct",
+        "modal-body",
+        "toast-success",
+        "toast-error",
+        "export-menu",
+        "workspace-topbar",
     ]
     for snippet in required_snippets:
-        assert snippet in js, f"missing frontend contract: {snippet}"
+        assert snippet in frontend_bundle, f"missing frontend contract: {snippet}"
     recipe_detail_match = re.search(
         r"async renderRecipeDetail\(el, id\)\s*\{(?P<body>[\s\S]*?)\n  \},\n\n  deleteRecipe",
         js,
@@ -217,6 +227,15 @@ def check_frontend_design_contracts():
         recipe_detail_body,
     )
     assert history_panel_match, "history panel should be controlled by historyItems.length"
+
+    toast_match = re.search(r"toast\(msg,\s*type='success'\)\s*\{(?P<body>[\s\S]*?)\n  \},", js)
+    assert toast_match, "missing toast helper"
+    toast_body = toast_match.group("body")
+    assert "toast-title" in toast_body and "toast-message" in toast_body
+
+    topbar_match = re.search(r"renderTopbarActions\(\)\s*\{(?P<body>[\s\S]*?)\n  \},", js)
+    assert topbar_match, "missing renderTopbarActions helper"
+    assert "renderExportMenu()" in topbar_match.group("body")
 
 
 def main():

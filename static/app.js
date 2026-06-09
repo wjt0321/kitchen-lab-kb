@@ -21,6 +21,11 @@ const app = {
         menu.classList.add('hide');
       }
     });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      this.closeModal();
+      this.closeExportMenu();
+    });
   },
 
   updateShell() {
@@ -77,7 +82,13 @@ const app = {
     else if (path.match(/^\/recipes\/\d+\/edit$/)) this.renderRecipeForm(appEl, parseInt(path.split('/')[2]));
     else if (path.match(/^\/recipes\/\d+$/)) this.renderRecipeDetail(appEl, parseInt(path.split('/')[2]));
     else if (path === '/success-rate') this.renderSuccessRate(appEl, params);
-    else { appEl.innerHTML = '<div class="empty-state"><h3>页面不存在</h3></div>'; }
+    else {
+      appEl.innerHTML = this.renderEmptyState({
+        title: '页面不存在',
+        body: '请从左侧导航重新选择工作区页面。',
+        action: '<button class="btn btn-primary" onclick="location.hash=\'#/products\'">返回产品工作台</button>',
+      });
+    }
   },
 
   // ===== API =====
@@ -95,11 +106,18 @@ const app = {
   // ===== UI helpers =====
   toast(msg, type='success') {
     const box = document.getElementById('toast-container');
+    if (!box) return;
+    const titleMap = { success: '操作完成', error: '操作失败', info: '系统提示' };
     const div = document.createElement('div');
     div.className = `toast toast-${type}`;
-    div.textContent = msg;
+    div.setAttribute('role', 'status');
+    div.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    div.innerHTML = `
+      <div class="toast-title">${this.escapeHtml(titleMap[type] || titleMap.info)}</div>
+      <div class="toast-message">${this.escapeHtml(msg)}</div>
+    `;
     box.appendChild(div);
-    setTimeout(() => div.remove(), 2500);
+    setTimeout(() => div.remove(), 2600);
   },
 
   modal(title, body, onConfirm, confirmText='确认', isDanger=false, options = {}) {
@@ -134,8 +152,26 @@ const app = {
     document.getElementById('modal-container').innerHTML = '';
   },
 
+  closeExportMenu() {
+    document.getElementById('export-menu')?.classList.add('hide');
+  },
+
   toggleExportMenu() {
     document.getElementById('export-menu')?.classList.toggle('hide');
+  },
+
+  renderExportMenu() {
+    return `
+      <div id="export-menu" class="export-menu hide">
+        <div class="export-menu-title">导出与模板</div>
+        <button type="button" onclick="app.exportExcel('products')">导出产品列表</button>
+        <button type="button" onclick="app.exportExcel('recipes')">导出配方记录</button>
+        <button type="button" onclick="app.exportExcel('success_rate')">导出成功率</button>
+        <button type="button" onclick="app.exportJson()">导出 JSON</button>
+        <button type="button" onclick="app.exportTemplate('products')">产品导入模板</button>
+        <button type="button" onclick="app.exportTemplate('recipes')">配方导入模板</button>
+      </div>
+    `;
   },
 
   renderSidebarNav(path) {
@@ -158,22 +194,19 @@ const app = {
     return `
       <div class="topbar-spacer"></div>
       <div class="system-actions">
-        <span class="current-user">${this.escapeHtml(this.user)}</span>
-        <button class="btn btn-secondary" onclick="app.backup()">备份</button>
-        <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
-        <button class="btn btn-secondary" onclick="app.importData()">导入</button>
-        <div class="menu-wrap">
-          <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
-          <div id="export-menu" class="export-menu hide">
-            <a href="javascript:app.exportExcel('products')">导出产品列表</a>
-            <a href="javascript:app.exportExcel('recipes')">导出配方记录</a>
-            <a href="javascript:app.exportExcel('success_rate')">导出成功率</a>
-            <a href="javascript:app.exportJson()">导出 JSON</a>
-            <a href="javascript:app.exportTemplate('products')">产品导入模板</a>
-            <a href="javascript:app.exportTemplate('recipes')">配方导入模板</a>
-          </div>
+        <div class="system-group">
+          <span class="current-user">${this.escapeHtml(this.user)}</span>
         </div>
-        <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>
+        <div class="system-group">
+          <button class="btn btn-secondary" onclick="app.backup()">备份</button>
+          <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
+          <button class="btn btn-secondary" onclick="app.importData()">导入</button>
+          <div class="menu-wrap">
+            <button class="btn btn-secondary" onclick="app.toggleExportMenu()">导出</button>
+            ${this.renderExportMenu()}
+          </div>
+          <button class="btn btn-exit" onclick="app.confirmExit()">退出</button>
+        </div>
       </div>
     `;
   },
@@ -654,7 +687,11 @@ const app = {
       </div>`;
 
     if (items.length === 0) {
-      box.innerHTML = `${filters}<div class="empty-state"><h3>暂无配方记录</h3><p>这个产品还没有试验记录。可以新建一条配方,记录原料、辅料和试验结果。</p><button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">新建配方</button></div>`;
+      box.innerHTML = `${filters}${this.renderEmptyState({
+        title: '暂无配方记录',
+        body: '这个产品还没有试验记录。可以新建一条配方，记录原料、辅料和试验结果。',
+        action: `<button class="btn btn-primary" onclick="location.hash='#/recipes/new?product_id=${productId}'">新建配方</button>`,
+      })}`;
       this.loadMaterialSuggestions();
       return;
     }
@@ -707,7 +744,10 @@ const app = {
     const items = r.data || [];
 
     if (items.length === 0) {
-      box.innerHTML = `<div class="empty-state"><h3>暂无成功率数据</h3><p>至少需要一条"成功"或"失败"的配方记录,才能计算成功率。待观察状态不会参与成功率计算。</p></div>`;
+      box.innerHTML = this.renderEmptyState({
+        title: '暂无成功率数据',
+        body: '至少需要一条成功或失败的配方记录，才能计算成功率。待观察状态不会参与成功率计算。',
+      });
       return;
     }
 
@@ -721,7 +761,10 @@ const app = {
           <td>${this.formatSuccessRate(item)}</td>
           <td><button class="btn btn-text" onclick="event.stopPropagation();app.toggleHashHistory(${productId}, '${item.配方hash}', '${rowId}')">展开历史</button></td>
         </tr>
-        <tr id="${rowId}" class="hide"><td colspan="5"><div class="empty-state" style="padding:16px;">正在加载历史记录……</div></td></tr>`;
+        <tr id="${rowId}" class="hide"><td colspan="5">${this.renderEmptyState({
+          title: '正在加载历史记录',
+          body: '请稍候，正在整理同组合试验明细。',
+        })}</td></tr>`;
     }).join('');
 
     box.innerHTML = `
@@ -740,7 +783,10 @@ const app = {
 
     const r = await this.get(`/api/products/${productId}/recipes-by-hash/${hash}`);
     if (!r.ok) {
-      row.innerHTML = `<td colspan="${colSpan}"><div class="empty-state" style="padding:16px;"><h3>历史记录加载失败</h3></div></td>`;
+      row.innerHTML = `<td colspan="${colSpan}">${this.renderEmptyState({
+        title: '历史记录加载失败',
+        body: '请稍后重试，或返回成功率列表重新展开。',
+      })}</td>`;
       return;
     }
     const items = r.data || [];

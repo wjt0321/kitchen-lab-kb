@@ -340,25 +340,40 @@ a:hover { color: var(--primary-hover); text-decoration: none; }
   position: absolute;
   right: 0;
   top: 42px;
-  min-width: 172px;
-  padding: 6px;
+  min-width: 196px;
+  padding: 8px;
   z-index: 50;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
+  border-radius: 22px;
+  box-shadow: var(--surface-shadow);
 }
 
-.export-menu a {
+.export-menu-title {
+  padding: 8px 10px 6px;
+  color: var(--text-sub);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.export-menu a,
+.export-menu button {
   display: block;
+  width: 100%;
   padding: 9px 10px;
   border-radius: var(--radius-md);
   font-size: 13px;
   color: var(--text-main);
   font-weight: 700;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
 }
 
-.export-menu a:hover {
+.export-menu a:hover,
+.export-menu button:hover {
   background: var(--primary-soft);
   color: var(--primary);
 }
@@ -778,11 +793,20 @@ td button + button {
 
 .toast {
   min-width: 240px;
-  padding: 11px 14px;
-  border-radius: var(--radius-lg);
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 12px 14px;
+  border-radius: 22px;
   font-size: 13px;
+  box-shadow: var(--surface-shadow);
+}
+
+.toast-title {
+  margin-bottom: 4px;
   font-weight: 800;
-  box-shadow: var(--shadow-md);
+}
+
+.toast-message {
+  line-height: 1.45;
 }
 
 .toast-success {
@@ -885,8 +909,8 @@ td button + button {
   padding: 22px;
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
+  border-radius: 22px;
+  box-shadow: var(--surface-shadow);
 }
 
 .modal-title {
@@ -897,6 +921,8 @@ td button + button {
 
 .modal-body {
   color: var(--text-sub);
+  display: grid;
+  gap: 12px;
   margin-bottom: 18px;
 }
 
@@ -1608,6 +1634,7 @@ td:first-child a { color: #0f766e; }
 
   .btn-secondary:hover:not(:disabled),
   .export-menu a:hover,
+  .export-menu button:hover,
   .btn-text:hover:not(:disabled),
   .btn-subtle-danger:hover:not(:disabled) {
     color: #ffffff;
@@ -1759,12 +1786,20 @@ body {
   flex-wrap: wrap;
 }
 
+.system-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .workspace-topbar .current-user {
   display: inline-flex;
   align-items: center;
   min-height: 36px;
   padding: 0 12px;
   border-radius: 999px;
+  font-weight: 700;
 }
 
 .workspace-content {
