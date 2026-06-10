@@ -5,6 +5,8 @@ import os
 import socket
 import threading
 import time
+import urllib.error
+import urllib.request
 import webbrowser
 
 import uvicorn
@@ -14,6 +16,7 @@ PORT = 7777
 ROOT_DIR = os.path.dirname(__file__)
 LOG_DIR = os.path.join(ROOT_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "startup.log")
+_shutdown_started = False
 
 
 def setup_logging():
@@ -69,11 +72,51 @@ def show_error(message):
         print(full_message)
 
 
-def open_window(url):
+def confirm_backup_and_exit() -> bool:
+    message = "关闭窗口前会自动备份当前数据库，然后退出后台进程。\n\n确定要退出吗？"
+    try:
+        result = ctypes.windll.user32.MessageBoxW(None, message, "退出样品库知识库", 0x21)
+        return result == 1
+    except Exception:
+        return True
+
+
+def request_app_shutdown(port) -> None:
+    url = f"http://{HOST}:{port}/api/shutdown"
+    request = urllib.request.Request(url, data=b"{}", method="POST")
+    request.add_header("Content-Type", "application/json")
+    with urllib.request.urlopen(request, timeout=10) as response:
+        response.read()
+
+
+def handle_window_closing(port):
+    def _handler():
+        global _shutdown_started
+        if _shutdown_started:
+            return False
+
+        if not confirm_backup_and_exit():
+            return False
+
+        _shutdown_started = True
+        try:
+            request_app_shutdown(port)
+            logging.info("Shutdown requested from desktop window close button")
+        except (OSError, urllib.error.URLError, TimeoutError):
+            _shutdown_started = False
+            logging.exception("Failed to request graceful shutdown from window close button")
+            show_error("自动备份并退出失败，窗口已保持打开。请使用页面右上角“退出”按钮重试。")
+
+        return False
+
+    return _handler
+
+
+def open_window(url, port):
     try:
         import webview
 
-        webview.create_window(
+        window = webview.create_window(
             "样品库知识库",
             url,
             width=1100,
@@ -81,6 +124,8 @@ def open_window(url):
             min_size=(900, 640),
             resizable=True,
         )
+        if window and hasattr(window, "events"):
+            window.events.closing += handle_window_closing(port)
         webview.start()
         return
     except Exception:
@@ -103,4 +148,4 @@ if __name__ == "__main__":
         show_error("后台服务启动超时，可能是依赖缺失或程序异常。")
         raise SystemExit(1)
 
-    open_window(f"http://{HOST}:{port}/login")
+    open_window(f"http://{HOST}:{port}/login", port)
