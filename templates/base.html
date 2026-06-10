@@ -1,28 +1,39 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-bs-theme="light">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>样品库知识库</title>
-<link rel="stylesheet" href="/static/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>样品库知识库 — Kitchen Lab</title>
+  <link rel="icon" href="/兴达logo.ico" type="image/x-icon">
+  <!-- Tabler CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta21/dist/css/tabler.min.css">
+  <!-- Tabler Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.14.0/tabler-icons.min.css">
+  <!-- Custom overrides -->
+  <link rel="stylesheet" href="/static/style.css?v=tabler-20260609-2">
 </head>
 <body>
-<div id="app-shell" class="workspace-shell">
-  <aside id="sidebar" class="workspace-sidebar"></aside>
-  <div class="workspace-main">
-    <header id="topbar" class="workspace-topbar"></header>
-    <div id="toast-container"></div>
-    <div id="modal-container"></div>
-    <main id="app" class="workspace-content"></main>
+  <div id="app-shell" class="page">
+    <aside id="sidebar" class="navbar navbar-vertical navbar-expand-lg"></aside>
+    <div class="page-wrapper">
+      <div class="page-header" id="topbar"></div>
+      <div class="page-body">
+        <div class="container-xl" id="app"></div>
+      </div>
+    </div>
   </div>
-</div>
 
-<script src="/static/app.js"></script>
-<script>
-// Initialize app after DOM ready
-document.addEventListener('DOMContentLoaded', function() {
-  app.init();
-});
-</script>
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" aria-live="polite" aria-atomic="true"></div>
+  <!-- Modal container -->
+  <div id="modal-container"></div>
+
+  <!-- Tabler JS (includes Bootstrap) -->
+  <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta21/dist/js/tabler.min.js"></script>
+  <!-- App -->
+  <script src="/static/app.js?v=tabler-20260609-2"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => app.init());
+  </script>
 </body>
 </html>

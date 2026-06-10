@@ -26,24 +26,21 @@
 
 ## 界面预览
 
-### 登录页
-
-![登录页](docs/screenshots/codex-login.png)
-
 ### 产品工作台
 
-![产品工作台](docs/screenshots/codex-products.png)
+![产品工作台](docs/screenshots/tabler-products.png)
+
+### 产品详情
+
+![产品详情](docs/screenshots/tabler-product-detail.png)
 
 ### 成功率查询
 
-![成功率查询](docs/screenshots/codex-success-rate.png)
+![成功率查询](docs/screenshots/tabler-success-rate.png)
 
 ### 移动端适配
 
-<p>
-  <img src="docs/screenshots/codex-mobile-login.png" alt="移动端登录页" width="45%">
-  <img src="docs/screenshots/codex-mobile-products.png" alt="移动端产品列表" width="45%">
-</p>
+<img src="docs/screenshots/tabler-mobile-products.png" alt="移动端产品列表" width="45%">
 
 更多操作截图见 [`docs/screenshots/`](docs/screenshots/)，完整图文说明见 [`docs/兴达样品库知识库使用指南.docx`](docs/兴达样品库知识库使用指南.docx)。
 
