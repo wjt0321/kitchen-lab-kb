@@ -64,7 +64,7 @@ def check_workspace_high_frequency_icons(base_url):
         page.goto(f"{base_url}/login", wait_until="networkidle")
         page.locator("#login-user").fill("planner")
         page.get_by_role("button", name="进入工作台").click()
-        page.wait_for_url(re.compile(r".+#/products$"))
+        page.wait_for_function("() => window.location.hash === '#/products'")
         page.wait_for_load_state("networkidle")
 
         assert page.locator(".sidebar-brand-logo").count() == 1

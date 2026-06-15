@@ -39,6 +39,7 @@ const app = {
     });
     window.addEventListener('resize', () => {
       if (window.innerWidth > 991) this.toggleSidebarDrawer(false);
+      this.syncWorkbenchStickyOffsets();
     });
   },
 
@@ -239,6 +240,14 @@ const app = {
     return document.getElementById('workbench-tabs');
   },
 
+  syncWorkbenchStickyOffsets() {
+    const tabs = this.getWorkbenchTabs();
+    const body = this.getWorkbenchBody();
+    const offset = tabs && !tabs.classList.contains('hide') ? tabs.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--workbench-tabs-offset', `${offset}px`);
+    if (body) body.style.setProperty('--workbench-tabs-offset', `${offset}px`);
+  },
+
   getTabContentContainer(id) {
     return document.getElementById(`tab-content-${id}`);
   },
@@ -321,6 +330,7 @@ const app = {
     if (!bar) return;
     if (this.tabs.length === 0) {
       bar.innerHTML = '';
+      this.syncWorkbenchStickyOffsets();
       return;
     }
     bar.innerHTML = this.tabs.map(t => {
@@ -333,6 +343,7 @@ const app = {
         </div>
       `;
     }).join('');
+    this.syncWorkbenchStickyOffsets();
   },
 
   syncHashToTab(id) {
@@ -414,6 +425,12 @@ const app = {
     return { path, params: new URLSearchParams(location.search || '') };
   },
 
+  safeFetchErrorMessage(error) {
+    if (error?.name === 'AbortError') return '请求已取消，请重试';
+    if (error instanceof TypeError) return '无法连接到本地服务，请确认项目仍在运行';
+    return error?.message || '请求失败，请稍后重试';
+  },
+
   async route() {
     const { path, params } = this.routeFromLocation();
     this.currentPage = path;
@@ -465,8 +482,12 @@ const app = {
   async api(method, url, body) {
     const opts = { method, headers: { 'Content-Type': 'application/json', 'X-Username': encodeURIComponent(this.user || '') } };
     if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(url, opts);
-    return res.json();
+    try {
+      const res = await fetch(url, opts);
+      return res.json();
+    } catch (error) {
+      return { ok: false, error: this.safeFetchErrorMessage(error) };
+    }
   },
   get(url) { return this.api('GET', url); },
   post(url, body) { return this.api('POST', url, body); },
@@ -533,6 +554,36 @@ const app = {
     document.getElementById('export-menu')?.classList.add('hide');
   },
 
+  initProductsTableScroll(root = document) {
+    const wrap = root.querySelector('.table-wrap');
+    const table = root.querySelector('.products-table');
+    const scrollbar = root.querySelector('.table-scrollbar');
+    const inner = root.querySelector('.table-scrollbar-inner');
+    if (!wrap || !table || !scrollbar || !inner) return;
+
+    inner.style.width = `${table.scrollWidth}px`;
+    const hasOverflow = table.scrollWidth > wrap.clientWidth + 1;
+    scrollbar.classList.toggle('hide', !hasOverflow);
+
+    let syncing = false;
+    const syncFromBar = () => {
+      if (syncing) return;
+      syncing = true;
+      wrap.scrollLeft = scrollbar.scrollLeft;
+      syncing = false;
+    };
+    const syncFromWrap = () => {
+      if (syncing) return;
+      syncing = true;
+      scrollbar.scrollLeft = wrap.scrollLeft;
+      syncing = false;
+    };
+
+    scrollbar.addEventListener('scroll', syncFromBar);
+    wrap.addEventListener('scroll', syncFromWrap);
+    syncFromWrap();
+  },
+
   toggleExportMenu() {
     document.getElementById('export-menu')?.classList.toggle('hide');
   },
@@ -556,6 +607,7 @@ const app = {
     const productActive = path.startsWith('/products');
     const recipeActive = path.startsWith('/recipes');
     const successActive = path.startsWith('/success-rate');
+    const productRecipeActive = productActive || recipeActive;
     const q = this.routeFromLocation().params.get('q') || '';
     return `
       <div class="sidebar-brand">
@@ -582,7 +634,7 @@ const app = {
       <div class="sidebar-group">
         <div class="sidebar-group-title">配方记录</div>
         <nav class="sidebar-subnav">
-          <a class="${recipeActive && !path.includes('/new') ? 'active' : ''}" href="#/products" onclick="app.toggleSidebarDrawer(false)">${this.renderIcon('flask')}按产品查看</a>
+          <a class="${productRecipeActive ? 'active' : ''}" href="#/products" onclick="app.toggleSidebarDrawer(false)">${this.renderIcon('flask')}按产品查看</a>
           <a class="${successActive ? 'active' : ''}" href="#/success-rate" onclick="app.toggleSidebarDrawer(false)">${this.renderIcon('chart-bar')}成功率</a>
         </nav>
       </div>
@@ -839,13 +891,18 @@ const app = {
     });
 
     el.innerHTML = `
-      ${hero}
-      <div class="action-bar">
-        <a class="btn btn-primary" href="#/products/new">${this.renderIcon('plus', 'me-1')}新增产品</a>
-        <input id="action-import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
-        <button class="btn btn-outline-secondary" onclick="app.importData()">${this.renderIcon('file-import', 'me-1')}批量导入</button>
-        <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()">${this.renderIcon('archive', 'me-1')}批量归档</button>
-        <button class="btn btn-outline-secondary" onclick="app.exportSelectedProducts()">${this.renderIcon('file-export', 'me-1')}导出选中</button>
+      <div class="products-fixed-stack">
+        ${hero}
+        <div class="action-bar">
+          <a class="btn btn-primary" href="#/products/new">${this.renderIcon('plus', 'me-1')}新增产品</a>
+          <input id="action-import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
+          <button class="btn btn-outline-secondary" onclick="app.importData()">${this.renderIcon('file-import', 'me-1')}批量导入</button>
+          <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()">${this.renderIcon('archive', 'me-1')}批量归档</button>
+          <button class="btn btn-outline-secondary" onclick="app.exportSelectedProducts()">${this.renderIcon('file-export', 'me-1')}导出选中</button>
+        </div>
+        <div class="table-scrollbar" aria-hidden="true">
+          <div class="table-scrollbar-inner"></div>
+        </div>
       </div>
       <div class="card products-panel">
         <div class="card-header">
@@ -868,6 +925,9 @@ const app = {
         <span class="pagination-label">第 ${page} / ${totalPages} 页</span>
         <button class="btn btn-outline-secondary pagination-next" ${page>=totalPages?'disabled':''} onclick="app.navProducts({page:${page+1}})">下一页${this.renderIcon('chevron-right', 'ms-1')}</button>
       </div>`:''}`;
+    this.syncWorkbenchStickyOffsets();
+    requestAnimationFrame(() => this.syncWorkbenchStickyOffsets());
+    this.initProductsTableScroll(el);
   },
 
   toggleProductSelection(id, checked) {
@@ -1792,7 +1852,8 @@ const app = {
     const sort = params.get('sort') || '成功率';
     const order = params.get('order') || 'desc';
     const prods = await this.get('/api/products?status=active&page_size=999');
-    const options = `<option value="">全部产品</option>` + (prods.data?.items||[]).map(p=>`<option value="${p.id}" ${p.id==productId?'selected':''}>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</option>`).join('');
+    const productItems = prods.ok ? (prods.data?.items || []) : [];
+    const options = `<option value="">全部产品</option>` + productItems.map(p=>`<option value="${p.id}" ${p.id==productId?'selected':''}>${this.escapeHtml(p.品号)} ${this.escapeHtml(p.品名)}</option>`).join('');
 
     const query = new URLSearchParams();
     if (productId) query.set('product_id', productId);
@@ -1805,7 +1866,7 @@ const app = {
     if (sort) query.set('sort', sort);
     if (order) query.set('order', order);
     const r = await this.get(`/api/success-rate${query.toString()?'?'+query.toString():''}`);
-    const items = r.data || [];
+    const items = r.ok ? (r.data || []) : [];
     const hero = this.renderPageHero({
       kicker: '成功率工作台',
       title: '按配方组合查看试验成功率',
@@ -1814,14 +1875,19 @@ const app = {
         <div class="success-rate-hero">
           <select class="form-select" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
           <input class="form-control" id="sr-min-trials" type="number" min="1" step="1" placeholder="最少试验次数" value="${this.escapeHtml(minTrials)}">
-        <button class="btn btn-outline-secondary" title="重置" onclick="location.hash='#/success-rate'">${this.renderIcon('refresh', 'me-1')}重置</button>
-        <button class="btn btn-primary" title="查询" onclick="app.searchSuccessRate()">${this.renderIcon('search', 'me-1')}查询</button>
+          <button class="btn btn-outline-secondary" title="重置" onclick="location.hash='#/success-rate'">${this.renderIcon('refresh', 'me-1')}重置</button>
+          <button class="btn btn-primary" title="查询" onclick="app.searchSuccessRate()">${this.renderIcon('search', 'me-1')}查询</button>
         </div>
       `,
     });
 
     let rows = '';
-    if (items.length === 0) {
+    if (!r.ok) {
+      rows = `<tr><td colspan="6">${this.renderEmptyState({
+        title: '成功率数据暂不可用',
+        body: r.error || '请确认本地服务仍在运行，然后刷新页面重试。',
+      })}</td></tr>`;
+    } else if (items.length === 0) {
       rows = `<tr><td colspan="6">${this.renderEmptyState({
         title: '暂无成功率数据',
         body: '至少需要一条成功或失败的配方记录，才能计算成功率。待观察状态不会参与统计。',

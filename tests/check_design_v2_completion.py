@@ -220,6 +220,7 @@ def check_frontend_design_contracts():
         "statusbar",
         "toggleSidebarDrawer(force)",
         "sidebar-drawer-toggle",
+        "safeFetchErrorMessage(error)",
         "export-menu",
         "sidebar-brand",
         "sidebar-subnav",
@@ -244,6 +245,9 @@ def check_frontend_design_contracts():
     ]
     for snippet in required_snippets:
         assert snippet in frontend_bundle, f"missing frontend contract: {snippet}"
+    api_body = extract_js_method_block(js, "async api(method, url, body)", "get(url)")
+    assert "try {" in api_body and "catch (error)" in api_body, "api helper should gracefully handle fetch failures"
+    assert "safeFetchErrorMessage(error)" in api_body, "api helper should normalize network failure messages"
     recipe_detail_body = extract_js_method_block(js, "async renderRecipeDetail(el, id)", "deleteRecipe(")
     hero_match = re.search(r"const hero = this\.renderPageHero\(\{(?P<body>[\s\S]*?)\}\);", recipe_detail_body)
     assert hero_match, "missing renderRecipeDetail hero block"

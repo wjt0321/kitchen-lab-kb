@@ -8,7 +8,7 @@ def main():
     with run_server(8021) as base_url:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
+            page = browser.new_page(viewport={"width": 1920, "height": 1200})
             page.goto(f"{base_url}/login", wait_until="networkidle")
             login_input_count = page.locator("#login-user").count()
             login_shell_count = page.locator(".login-shell").count()
@@ -19,7 +19,9 @@ def main():
             ).count()
             login_button_count = page.get_by_role("button", name="进入工作台").count()
             login_card_box = page.locator(".login-card").bounding_box()
+            login_shell_box = page.locator(".login-shell").bounding_box()
             viewport_height = page.evaluate("window.innerHeight")
+            viewport_width = page.evaluate("window.innerWidth")
             topbar_display = page.locator("#topbar").evaluate(
                 "el => getComputedStyle(el).display"
             )
@@ -37,7 +39,11 @@ def main():
         assert topbar_display == "none", "topbar should be hidden on login page"
         assert statusbar_display == "none", "statusbar should be hidden on login page"
         assert login_card_box is not None, "login card should expose layout box"
+        assert login_shell_box is not None, "login shell should expose layout box"
         assert login_card_box["y"] < viewport_height * 0.24, "login card should sit higher on the page"
+        assert login_card_box["y"] + login_card_box["height"] < viewport_height, "login card should stay visible on maximized screens"
+        assert login_shell_box["height"] >= viewport_height - 4, "login shell should fill the viewport height"
+        assert abs((login_card_box["x"] + login_card_box["width"] / 2) - (viewport_width / 2)) < 24, "login card should stay horizontally centered"
 
 
 if __name__ == "__main__":

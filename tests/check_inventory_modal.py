@@ -42,6 +42,7 @@ def main():
             assert page.locator(".detail-workspace").count() == 1
             assert page.locator(".detail-primary").count() == 1
             assert page.locator(".detail-secondary").count() == 1
+            assert page.locator(".sidebar-subnav a.active", has_text="按产品查看").count() == 1
             assert page.get_by_role("button", name="调整库存").count() >= 1
 
             page.get_by_role("button", name="调整库存").first.click()
