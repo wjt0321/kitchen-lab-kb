@@ -768,8 +768,8 @@ const app = {
         title: q ? '没有找到匹配的产品' : '暂无产品',
         body: q ? '请尝试更换关键词，或清空筛选条件。' : '还没有录入任何产品。先新建一个产品，再记录配方试验。',
         action: q
-          ? `<a class="btn btn-primary" href="#/products"><i class="ti ti-filter-off"></i> 清空筛选</a>`
-          : `<a class="btn btn-primary" href="#/products/new"><i class="ti ti-plus"></i> 新建产品</a>`,
+          ? `<a class="btn btn-primary" href="#/products">${this.renderIcon('filter-off')} 清空筛选</a>`
+          : `<a class="btn btn-primary" href="#/products/new">${this.renderIcon('plus')} 新建产品</a>`,
       })}</td></tr>`;
     } else {
       rows = items.map(p => `
@@ -814,7 +814,7 @@ const app = {
       `,
       actions: `
         <div class="products-hero-actions">
-          <button class="btn btn-outline-secondary" title="重置" onclick="location.hash='#/products'"><i class="ti ti-refresh me-1"></i>重置</button>
+          <button class="btn btn-outline-secondary" title="重置" onclick="location.hash='#/products'">${this.renderIcon('refresh', 'me-1')}重置</button>
         </div>
       `,
     });
@@ -822,11 +822,11 @@ const app = {
     el.innerHTML = `
       ${hero}
       <div class="action-bar">
-        <a class="btn btn-primary" href="#/products/new"><i class="ti ti-plus me-1"></i>新增产品</a>
+        <a class="btn btn-primary" href="#/products/new">${this.renderIcon('plus', 'me-1')}新增产品</a>
         <input id="action-import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
-        <button class="btn btn-outline-secondary" onclick="app.importData()"><i class="ti ti-file-import me-1"></i>批量导入</button>
-        <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()"><i class="ti ti-archive me-1"></i>批量归档</button>
-        <button class="btn btn-outline-secondary" onclick="app.exportSelectedProducts()"><i class="ti ti-file-export me-1"></i>导出选中</button>
+        <button class="btn btn-outline-secondary" onclick="app.importData()">${this.renderIcon('file-import', 'me-1')}批量导入</button>
+        <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()">${this.renderIcon('archive', 'me-1')}批量归档</button>
+        <button class="btn btn-outline-secondary" onclick="app.exportSelectedProducts()">${this.renderIcon('file-export', 'me-1')}导出选中</button>
       </div>
       <div class="card">
         <div class="card-header">
@@ -845,9 +845,9 @@ const app = {
       ${total>page_size?`
       <div class="pagination-bar">
         <span>共 ${total} 条</span>
-        <button class="btn btn-outline-secondary btn-sm" ${page<=1?'disabled':''} onclick="app.navProducts({page:${page-1}})"><i class="ti ti-chevron-left"></i></button>
+        <button class="btn btn-outline-secondary btn-sm" ${page<=1?'disabled':''} onclick="app.navProducts({page:${page-1}})">${this.renderIcon('chevron-left')}</button>
         <span>第 ${page} / ${totalPages} 页</span>
-        <button class="btn btn-outline-secondary btn-sm" ${page>=totalPages?'disabled':''} onclick="app.navProducts({page:${page+1}})"><i class="ti ti-chevron-right"></i></button>
+        <button class="btn btn-outline-secondary btn-sm" ${page>=totalPages?'disabled':''} onclick="app.navProducts({page:${page+1}})">${this.renderIcon('chevron-right')}</button>
       </div>`:''}`;
   },
 
@@ -955,7 +955,7 @@ const app = {
         </div>
         <div class="card-footer d-flex gap-2">
           <a class="btn btn-outline-secondary" href="#/products">取消</a>
-          <button class="btn btn-primary" id="pf-save" onclick="app.saveProduct(${id||0})"><i class="ti ti-device-floppy me-1"></i>保存</button>
+          <button class="btn btn-primary" id="pf-save" onclick="app.saveProduct(${id||0})">${this.renderIcon('device-floppy', 'me-1')}保存</button>
         </div>
       </div>`;
   },
@@ -979,7 +979,7 @@ const app = {
     const btn = document.getElementById('pf-save');
     btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>保存中……';
     const r = id ? await this.put(`/api/products/${id}`, payload) : await this.post('/api/products', payload);
-    btn.disabled = false; btn.innerHTML = '<i class="ti ti-device-floppy me-1"></i>保存';
+    btn.disabled = false; btn.innerHTML = `${this.renderIcon('device-floppy', 'me-1')}保存`;
     if (r.ok) {
       this.toast(id?`已保存产品 ${payload.品号}`:`已创建产品 ${payload.品号}`);
       this.refreshStatusTotals();
@@ -1020,13 +1020,13 @@ const app = {
       actions: `
         <div class="d-flex gap-2 flex-wrap">
           ${p.状态 === 'active' ? `
-            <a class="btn btn-primary" href="#/recipes/new?product_id=${p.id}"><i class="ti ti-plus"></i> 新建配方</a>
+            <a class="btn btn-primary" href="#/recipes/new?product_id=${p.id}">${this.renderIcon('plus')} 新建配方</a>
             <button class="btn btn-outline-secondary" onclick="app.openInventoryModal(${p.id})">调整库存</button>
             <a class="btn btn-outline-secondary" href="#/products/${p.id}/edit">编辑</a>
             <button class="btn btn-outline-warning" onclick="app.archiveProduct(${p.id})">归档</button>
           ` : `
-            <button class="btn btn-outline-secondary" onclick="app.restoreProduct(${p.id})"><i class="ti ti-refresh me-1"></i>恢复</button>
-            <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})"><i class="ti ti-trash me-1"></i>删除</button>
+            <button class="btn btn-outline-secondary" onclick="app.restoreProduct(${p.id})">${this.renderIcon('refresh', 'me-1')}恢复</button>
+            <button class="btn btn-danger" onclick="app.deleteProduct(${p.id})">${this.renderIcon('trash', 'me-1')}删除</button>
           `}
         </div>
       `,
@@ -1175,8 +1175,8 @@ const app = {
             </div>
           </div>
           <div class="filter-actions">
-            <button class="btn btn-primary" title="查询" onclick="app.searchProductRecipes(${productId})"><i class="ti ti-search me-1"></i>查询</button>
-            <a class="btn btn-outline-secondary" title="重置" href="#/products/${productId}?tab=recipes"><i class="ti ti-refresh me-1"></i>重置</a>
+            <button class="btn btn-primary" title="查询" onclick="app.searchProductRecipes(${productId})">${this.renderIcon('search', 'me-1')}查询</button>
+            <a class="btn btn-outline-secondary" title="重置" href="#/products/${productId}?tab=recipes">${this.renderIcon('refresh', 'me-1')}重置</a>
           </div>
           <datalist id="material-list"></datalist>
         </div>
@@ -1186,7 +1186,7 @@ const app = {
       box.innerHTML = `${filters}${this.renderEmptyState({
         title: '暂无配方记录',
         body: '这个产品还没有试验记录。可以新建一条配方，记录原料、辅料和试验结果。',
-        action: `<a class="btn btn-primary" href="#/recipes/new?product_id=${productId}"><i class="ti ti-plus"></i> 新建配方</a>`,
+        action: `<a class="btn btn-primary" href="#/recipes/new?product_id=${productId}">${this.renderIcon('plus')} 新建配方</a>`,
       })}`;
       this.loadMaterialSuggestions();
       return;
@@ -1214,7 +1214,7 @@ const app = {
         <div class="recipe-timeline-group ${idx > 0 ? 'collapsed' : ''}" id="recipe-group-${key}" data-group="${key}">
           <div class="recipe-timeline-header" onclick="app.toggleRecipeGroup('${key}')">
             <div class="recipe-timeline-title">
-              <i class="ti ti-chevron-down recipe-timeline-toggle"></i>
+              ${this.renderIcon('chevron-down', 'recipe-timeline-toggle')}
               <span>${this.escapeHtml(key)}</span>
               <span class="recipe-timeline-meta">${groupItems.length} 次试验 · ${success} 成功 · ${failed} 失败</span>
             </div>
@@ -1298,7 +1298,7 @@ const app = {
           <td>${item.成功次数}</td>
           <td>${this.formatSuccessRate(item)}</td>
           <td>
-            <button class="btn btn-ghost-secondary btn-sm" onclick="event.stopPropagation();app.toggleHashHistory(${productId}, '${item.配方hash}', '${rowId}')"><i class="ti ti-history me-1"></i>展开历史</button>
+            <button class="btn btn-ghost-secondary btn-sm" onclick="event.stopPropagation();app.toggleHashHistory(${productId}, '${item.配方hash}', '${rowId}')">${this.renderIcon('history', 'me-1')}展开历史</button>
           </td>
         </tr>
         <tr id="${rowId}" class="hide"><td colspan="5">${this.renderEmptyState({

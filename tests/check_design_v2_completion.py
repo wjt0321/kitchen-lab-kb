@@ -206,6 +206,13 @@ def check_frontend_design_contracts():
         "modal-body",
         "toast-title",
         "toast-message",
+        "app-shell",
+        "navbar-expand-lg",
+        "page-wrapper",
+        "page-header",
+        "workbench-tabs",
+        "workbench-body",
+        "statusbar",
         "export-menu",
         "sidebar-brand",
         "sidebar-subnav",
@@ -253,6 +260,9 @@ def check_frontend_design_contracts():
     brand_body = extract_js_method_block(js, "renderBrandMark()", "renderStatusBar(")
     assert "sidebar-brand-logo" in brand_body
     assert "brand-fallback" in brand_body
+    assert "navbar-expand-lg" in base_html, "base shell should keep sidebar drawer scaffold"
+    assert 'id="app-shell"' in base_html and 'id="sidebar"' in base_html
+    assert 'id="workbench-tabs"' in base_html and 'id="workbench-body"' in base_html
 
 
 def main():
