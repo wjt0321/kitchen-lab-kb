@@ -90,6 +90,11 @@ const app = {
     return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
   },
 
+  renderIcon(name, className = '') {
+    const classes = ['app-icon', `app-icon-${name}`, className].filter(Boolean).join(' ');
+    return `<span class="${classes}" data-icon="${name}" aria-hidden="true">${this.iconSvg(name)}</span>`;
+  },
+
   renderLocalIcons(root = document) {
     if (!root) return;
     const icons = [];
@@ -111,6 +116,21 @@ const app = {
     });
   },
 
+  renderBrandMark() {
+    return `
+      <span class="brand-mark">
+        <img
+          class="sidebar-brand-logo"
+          src="/兴达logo.ico"
+          alt=""
+          loading="eager"
+          onerror="this.classList.add('hide');this.nextElementSibling.classList.remove('hide');"
+        >
+        <span class="brand-fallback hide" aria-hidden="true">KL</span>
+      </span>
+    `;
+  },
+
   // ===== Status bar =====
   startStatusClock() {
     if (this.statusClock) clearInterval(this.statusClock);
@@ -122,11 +142,11 @@ const app = {
     if (!bar) return;
     if (!bar.querySelector('#sb-time')) {
       bar.innerHTML = `
-        <span><i class="ti ti-checklist"></i> 选中 <strong id="sb-selected">0</strong> 条</span>
-        <span><i class="ti ti-database"></i> 上次备份 <strong id="sb-backup">--</strong></span>
-        <span><i class="ti ti-box"></i> 产品总数 <strong id="sb-total">--</strong></span>
+        <span>${this.renderIcon('checklist')} 选中 <strong id="sb-selected">0</strong> 条</span>
+        <span>${this.renderIcon('database')} 上次备份 <strong id="sb-backup">--</strong></span>
+        <span>${this.renderIcon('box')} 产品总数 <strong id="sb-total">--</strong></span>
         <div class="statusbar-spacer"></div>
-        <span><i class="ti ti-clock"></i> <span id="sb-time">--</span></span>
+        <span>${this.renderIcon('clock')} <span id="sb-time">--</span></span>
       `;
       this.refreshStatusTotals();
     }
@@ -302,7 +322,7 @@ const app = {
       const active = t.id === this.activeTabId ? 'active' : '';
       return `
         <div class="workbench-tab ${active}" onclick="app.activateTab('${t.id}'); app.syncHashToTab('${t.id}');">
-          <i class="ti ti-${t.meta.icon}"></i>
+          ${this.renderIcon(t.meta.icon)}
           <span>${this.escapeHtml(t.meta.title)}</span>
           <button type="button" class="workbench-tab-close" onclick="app.closeTab('${t.id}', event)" aria-label="关闭">&times;</button>
         </div>
@@ -440,7 +460,7 @@ const app = {
     w.className = `toast align-items-center text-white ${bg} border-0`;
     w.setAttribute('role', 'status');
     w.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
-    w.innerHTML = `<div class="d-flex"><div class="toast-body d-flex align-items-center gap-2"><i class="ti ti-${icon} fs-4"></i><div><strong>${this.escapeHtml(titles[type]||titles.info)}</strong><div>${this.escapeHtml(msg)}</div></div></div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
+    w.innerHTML = `<div class="d-flex"><div class="toast-body d-flex align-items-center gap-2">${this.renderIcon(icon, 'fs-4')}<div><strong class="toast-title">${this.escapeHtml(titles[type]||titles.info)}</strong><div class="toast-message">${this.escapeHtml(msg)}</div></div></div><button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button></div>`;
     box.appendChild(w);
     const t = new bootstrap.Toast(w, { delay: 2600 });
     t.show();
@@ -497,13 +517,13 @@ const app = {
     return `
       <div id="export-menu" class="dropdown-menu dropdown-menu-end show hide">
         <span class="dropdown-header">导出与模板</span>
-        <button type="button" class="dropdown-item" onclick="app.exportExcel('products')"><i class="ti ti-file-spreadsheet me-2"></i>导出产品列表</button>
-        <button type="button" class="dropdown-item" onclick="app.exportExcel('recipes')"><i class="ti ti-file-spreadsheet me-2"></i>导出配方记录</button>
-        <button type="button" class="dropdown-item" onclick="app.exportExcel('success_rate')"><i class="ti ti-file-spreadsheet me-2"></i>导出成功率</button>
-        <button type="button" class="dropdown-item" onclick="app.exportJson()"><i class="ti ti-json me-2"></i>导出 JSON</button>
+        <button type="button" class="dropdown-item" onclick="app.exportExcel('products')">${this.renderIcon('file-spreadsheet', 'me-2')}导出产品列表</button>
+        <button type="button" class="dropdown-item" onclick="app.exportExcel('recipes')">${this.renderIcon('file-spreadsheet', 'me-2')}导出配方记录</button>
+        <button type="button" class="dropdown-item" onclick="app.exportExcel('success_rate')">${this.renderIcon('file-spreadsheet', 'me-2')}导出成功率</button>
+        <button type="button" class="dropdown-item" onclick="app.exportJson()">${this.renderIcon('json', 'me-2')}导出 JSON</button>
         <div class="dropdown-divider"></div>
-        <button type="button" class="dropdown-item" onclick="app.exportTemplate('products')"><i class="ti ti-download me-2"></i>产品导入模板</button>
-        <button type="button" class="dropdown-item" onclick="app.exportTemplate('recipes')"><i class="ti ti-download me-2"></i>配方导入模板</button>
+        <button type="button" class="dropdown-item" onclick="app.exportTemplate('products')">${this.renderIcon('download', 'me-2')}产品导入模板</button>
+        <button type="button" class="dropdown-item" onclick="app.exportTemplate('recipes')">${this.renderIcon('download', 'me-2')}配方导入模板</button>
       </div>
     `;
   },
@@ -515,7 +535,7 @@ const app = {
     const q = this.routeFromLocation().params.get('q') || '';
     return `
       <div class="sidebar-brand">
-        <span class="brand-mark">KL</span>
+        ${this.renderBrandMark()}
         <div>
           <div class="sidebar-brand-title">样品库知识库</div>
           <div class="sidebar-brand-subtitle">Kitchen Lab</div>
@@ -525,40 +545,40 @@ const app = {
         <input class="form-control" id="sidebar-search" placeholder="搜索产品…" value="${this.escapeHtml(q)}" onkeydown="if(event.key==='Enter')app.sidebarSearch()">
       </div>
       <nav class="sidebar-nav">
-        <a class="${productActive ? 'active' : ''}" href="#/products"><i class="ti ti-box"></i>产品</a>
+        <a class="${productActive ? 'active' : ''}" href="#/products">${this.renderIcon('box')}产品</a>
       </nav>
       <div class="sidebar-group">
         <div class="sidebar-group-title">产品管理</div>
         <nav class="sidebar-subnav">
-          <a class="${path === '/products' ? 'active' : ''}" href="#/products"><i class="ti ti-list"></i>全部产品</a>
-          <a class="${path === '/products/new' ? 'active' : ''}" href="#/products/new"><i class="ti ti-plus"></i>新增产品</a>
-          <a class="${(new URLSearchParams(location.hash.split('?')[1]||'')).get('status')==='archived' ? 'active' : ''}" href="#/products?status=archived"><i class="ti ti-archive"></i>已归档</a>
+          <a class="${path === '/products' ? 'active' : ''}" href="#/products">${this.renderIcon('list')}全部产品</a>
+          <a class="${path === '/products/new' ? 'active' : ''}" href="#/products/new">${this.renderIcon('plus')}新增产品</a>
+          <a class="${(new URLSearchParams(location.hash.split('?')[1]||'')).get('status')==='archived' ? 'active' : ''}" href="#/products?status=archived">${this.renderIcon('archive')}已归档</a>
         </nav>
       </div>
       <div class="sidebar-group">
         <div class="sidebar-group-title">配方记录</div>
         <nav class="sidebar-subnav">
-          <a class="${recipeActive && !path.includes('/new') ? 'active' : ''}" href="#/products"><i class="ti ti-flask"></i>按产品查看</a>
-          <a class="${successActive ? 'active' : ''}" href="#/success-rate"><i class="ti ti-chart-bar"></i>成功率</a>
+          <a class="${recipeActive && !path.includes('/new') ? 'active' : ''}" href="#/products">${this.renderIcon('flask')}按产品查看</a>
+          <a class="${successActive ? 'active' : ''}" href="#/success-rate">${this.renderIcon('chart-bar')}成功率</a>
         </nav>
       </div>
       <div class="sidebar-group">
         <div class="sidebar-group-title">工具</div>
         <nav class="sidebar-subnav">
-          <a href="javascript:app.exportExcel('products')"><i class="ti ti-file-spreadsheet"></i>Excel 导出</a>
-          <a href="javascript:app.exportJson()"><i class="ti ti-json"></i>JSON 导出</a>
-          <a href="javascript:app.backup()"><i class="ti ti-database"></i>一键备份</a>
+          <a href="javascript:app.exportExcel('products')">${this.renderIcon('file-spreadsheet')}Excel 导出</a>
+          <a href="javascript:app.exportJson()">${this.renderIcon('json')}JSON 导出</a>
+          <a href="javascript:app.backup()">${this.renderIcon('database')}一键备份</a>
         </nav>
       </div>
       <div class="sidebar-footer">
         <div class="d-flex align-items-center gap-2 mb-2">
-          <span class="avatar avatar-sm" style="background:var(--tblr-primary);color:#fff;"><i class="ti ti-user"></i></span>
+          <span class="avatar avatar-sm" style="background:var(--tblr-primary);color:#fff;">${this.renderIcon('user')}</span>
           <div class="flex-grow-1 min-width-0">
             <div class="fw-semibold text-truncate">${this.escapeHtml(this.user)}</div>
             <div class="text-muted-sm">已登录</div>
           </div>
         </div>
-        <button class="btn btn-outline-danger btn-sm w-100" onclick="app.confirmExit()"><i class="ti ti-logout me-1"></i>退出</button>
+        <button class="btn btn-outline-danger btn-sm w-100" onclick="app.confirmExit()">${this.renderIcon('logout', 'me-1')}退出</button>
       </div>
     `;
   },
@@ -575,15 +595,15 @@ const app = {
       <div class="topbar-content">
         <div class="topbar-spacer"></div>
         <div class="topbar-actions">
-          <span class="topbar-user"><i class="ti ti-user"></i>${this.escapeHtml(this.user)}</span>
-          <button class="btn btn-outline-secondary" onclick="app.backup()"><i class="ti ti-database me-1"></i>备份</button>
+          <span class="topbar-user">${this.renderIcon('user')}${this.escapeHtml(this.user)}</span>
+          <button class="btn btn-outline-secondary" onclick="app.backup()">${this.renderIcon('database', 'me-1')}备份</button>
           <input id="import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
-          <button class="btn btn-outline-secondary" onclick="app.importData()"><i class="ti ti-file-import me-1"></i>导入</button>
+          <button class="btn btn-outline-secondary" onclick="app.importData()">${this.renderIcon('file-import', 'me-1')}导入</button>
           <div class="dropdown">
-            <button class="btn btn-outline-secondary" onclick="app.toggleExportMenu()"><i class="ti ti-file-export me-1"></i>导出</button>
+            <button class="btn btn-outline-secondary" onclick="app.toggleExportMenu()">${this.renderIcon('file-export', 'me-1')}导出</button>
             ${this.renderExportMenu()}
           </div>
-          <button class="btn btn-outline-danger" onclick="app.confirmExit()"><i class="ti ti-logout me-1"></i>退出</button>
+          <button class="btn btn-outline-danger" onclick="app.confirmExit()">${this.renderIcon('logout', 'me-1')}退出</button>
         </div>
       </div>
     `;
@@ -626,7 +646,7 @@ const app = {
   },
 
   successRateHelp() {
-    return '<div class="help-note"><i class="ti ti-info-circle me-1"></i>成功率 = 同一配方组合下成功次数 / 成功或失败试验次数。只有 2 次及以上同组合试验才显示百分比，单次试验标记为样本不足。</div>';
+    return `<div class="help-note">${this.renderIcon('info-circle', 'me-1')}成功率 = 同一配方组合下成功次数 / 成功或失败试验次数。只有 2 次及以上同组合试验才显示百分比，单次试验标记为样本不足。</div>`;
   },
 
   formatSuccessRate(item) {
@@ -711,8 +731,8 @@ const app = {
           })}
           <div class="login-form">
             <input id="login-user" class="form-control" placeholder="请输入用户名" value="${safeLast}" onkeydown="if(event.key==='Enter')app.login()">
-            <button class="btn btn-primary w-100" onclick="app.login()"><i class="ti ti-login me-2"></i>进入工作台</button>
-            ${last?`<div class="login-last"><i class="ti ti-clock me-1"></i>上次登录: ${safeLast}</div>`:''}
+            <button class="btn btn-primary w-100" onclick="app.login()">${this.renderIcon('login', 'me-2')}进入工作台</button>
+            ${last?`<div class="login-last">${this.renderIcon('clock', 'me-1')}上次登录: ${safeLast}</div>`:''}
           </div>
         </div>
       </div>`;

@@ -173,11 +173,9 @@ def check_frontend_design_contracts():
         "routeFromLocation",
         "location.pathname",
         "renderPageHero",
+        "renderStatusBar",
+        "renderTabs",
         "products-hero-search",
-        "products-panel",
-        "detail-workspace",
-        "detail-primary",
-        "detail-secondary",
         "openInventoryModal",
         "submitInventoryModal",
         "inventory-modal",
@@ -186,12 +184,8 @@ def check_frontend_design_contracts():
         "inventory-error",
         "recipe-editor-shell",
         "recipe-section",
-        "recipe-status-panel",
         "success-rate-hero",
-        "success-rate-panel",
         "renderEmptyState",
-        "workspace-shell",
-        "system-actions",
         "prod-rec-status",
         "prod-rec-date-from",
         "prod-rec-date-to",
@@ -210,12 +204,24 @@ def check_frontend_design_contracts():
         "app.restoreProduct",
         "app.deleteProduct",
         "modal-body",
-        "toast-success",
-        "toast-error",
+        "toast-title",
+        "toast-message",
         "export-menu",
-        "workspace-topbar",
+        "sidebar-brand",
+        "sidebar-subnav",
+        "topbar-actions",
+        "workbench-tab",
         "renderExportMenu",
+        "renderSidebarNav",
+        "renderTopbarActions",
+        "renderStatusBar",
         "copyText",
+        "renderLocalIcons(root = document)",
+        "renderIcon(name, className = '')",
+        "renderBrandMark()",
+        "sidebar-brand-logo",
+        "brand-fallback",
+        "/兴达logo.ico",
     ]
     for snippet in required_snippets:
         assert snippet in frontend_bundle, f"missing frontend contract: {snippet}"
@@ -228,7 +234,7 @@ def check_frontend_design_contracts():
     assert "navigator.clipboard.writeText" not in recipe_detail_body, "recipe detail should not inline clipboard calls"
 
     history_panel_match = re.search(
-        r"<h3>同组合历史</h3>[\s\S]*?\$\{(?P<expr>historyItems\.length\s*\?[\s\S]*?)\}",
+        r"同组合历史[\s\S]*?\$\{(?P<expr>historyItems\.length\s*\?[\s\S]*?)\}",
         recipe_detail_body,
     )
     assert history_panel_match, "history panel should be controlled by historyItems.length"
@@ -236,8 +242,17 @@ def check_frontend_design_contracts():
     toast_body = extract_js_method_block(js, "toast(msg, type='success')", "async copyText(")
     assert "toast-title" in toast_body and "toast-message" in toast_body
 
-    topbar_body = extract_js_method_block(js, "renderTopbarActions()", "renderSidebarNav(")
+    topbar_body = extract_js_method_block(js, "renderTopbarActions()", "renderPageHero(")
     assert "renderExportMenu()" in topbar_body
+    assert "renderIcon(" in topbar_body
+
+    sidebar_body = extract_js_method_block(js, "renderSidebarNav(path)", "sidebarSearch(")
+    assert "renderBrandMark()" in sidebar_body
+    assert "renderIcon(" in sidebar_body
+
+    brand_body = extract_js_method_block(js, "renderBrandMark()", "renderStatusBar(")
+    assert "sidebar-brand-logo" in brand_body
+    assert "brand-fallback" in brand_body
 
 
 def main():
