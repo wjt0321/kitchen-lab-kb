@@ -26,34 +26,15 @@
 
 ## 界面预览
 
-### 登录页
-
-![登录页](docs/screenshots/codex-login.png)
-
 ### 产品工作台
 
-![产品工作台](docs/screenshots/codex-products.png)
+![产品工作台](docs/screenshots/test-1920x1080-products.png)
 
-### 成功率查询
+### 产品详情
 
-![成功率查询](docs/screenshots/codex-success-rate.png)
+![产品详情](docs/screenshots/test-1920x1080-detail.png)
 
-### 导出菜单
-
-![导出菜单](docs/screenshots/04-export-menu.png)
-
-### 退出确认
-
-![退出确认](docs/screenshots/05-exit-confirm.png)
-
-### 移动端适配
-
-<p>
-  <img src="docs/screenshots/codex-mobile-login.png" alt="移动端登录" width="45%">
-  <img src="docs/screenshots/codex-mobile-products.png" alt="移动端产品列表" width="45%">
-</p>
-
-更多操作截图见 [`docs/screenshots/`](docs/screenshots/)，完整图文说明见 [`docs/兴达样品库知识库使用指南.docx`](docs/兴达样品库知识库使用指南.docx)。
+更多截图见 [`docs/screenshots/`](docs/screenshots/)，完整图文说明见 [`docs/兴达样品库知识库使用指南.docx`](docs/兴达样品库知识库使用指南.docx)。
 
 ## 桌面工作台重构说明
 
