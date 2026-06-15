@@ -238,6 +238,32 @@ code, pre, .text-mono {
   font-weight: 600;
 }
 
+.ti {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  vertical-align: -.125em;
+  font-style: normal;
+  flex: 0 0 auto;
+}
+
+.ti svg {
+  width: 1em;
+  height: 1em;
+  display: block;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+}
+
+.ti[data-icon-ready="true"]::before {
+  content: none;
+}
+
 .sidebar-nav a .ti {
   font-size: 1.15rem;
 }

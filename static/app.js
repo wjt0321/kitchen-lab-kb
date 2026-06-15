@@ -8,6 +8,7 @@ const app = {
   activeTabId: null,
   selectedProductIds: new Set(),
   statusClock: null,
+  iconObserver: null,
 
   init() {
     this.user = localStorage.getItem('username') || '';
@@ -18,6 +19,7 @@ const app = {
     if (!this.user && route.path !== '/login') {
       location.hash = '#/login';
     }
+    this.setupLocalIconObserver();
     this.startStatusClock();
     this.updateShell();
     this.route();
@@ -32,6 +34,80 @@ const app = {
       if (e.key !== 'Escape') return;
       this.closeModal();
       this.closeExportMenu();
+    });
+  },
+
+  setupLocalIconObserver() {
+    if (this.iconObserver || !document.body || typeof MutationObserver === 'undefined') return;
+    this.iconObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+          this.renderLocalIcons(node);
+        });
+      });
+    });
+    this.iconObserver.observe(document.body, { childList: true, subtree: true });
+  },
+
+  iconSvg(name) {
+    const icons = {
+      'alert-circle': '<circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><circle cx="12" cy="16.5" r="1"></circle>',
+      archive: '<path d="M4 7h16v4H4z"></path><path d="M6 11v7h12v-7"></path><path d="M10 14h4"></path><path d="M5 7l1-3h12l1 3"></path>',
+      box: '<path d="m4 7 8-4 8 4-8 4-8-4Z"></path><path d="M4 7v10l8 4 8-4V7"></path><path d="M12 11v10"></path>',
+      'chart-bar': '<path d="M5 19V9"></path><path d="M12 19V5"></path><path d="M19 19v-8"></path><path d="M4 19h16"></path>',
+      'checklist': '<path d="M9 6h10"></path><path d="M9 12h10"></path><path d="M9 18h10"></path><path d="m4.5 6 1.5 1.5 2.5-3"></path><path d="m4.5 12 1.5 1.5 2.5-3"></path><path d="m4.5 18 1.5 1.5 2.5-3"></path>',
+      'chevron-down': '<path d="m6 9 6 6 6-6"></path>',
+      'chevron-left': '<path d="m15 6-6 6 6 6"></path>',
+      'chevron-right': '<path d="m9 6 6 6-6 6"></path>',
+      clock: '<circle cx="12" cy="12" r="8"></circle><path d="M12 8v5l3 2"></path>',
+      copy: '<rect x="9" y="9" width="10" height="11" rx="2"></rect><rect x="5" y="4" width="10" height="11" rx="2"></rect>',
+      database: '<ellipse cx="12" cy="5.5" rx="7" ry="2.5"></ellipse><path d="M5 5.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"></path><path d="M5 11.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"></path>',
+      'device-floppy': '<path d="M5 4h12l2 2v14H5z"></path><path d="M8 4v6h8V4"></path><path d="M9 19v-5h6v5"></path>',
+      download: '<path d="M12 4v10"></path><path d="m8.5 11.5 3.5 3.5 3.5-3.5"></path><path d="M5 19h14"></path>',
+      edit: '<path d="M4 20h4l10-10-4-4L4 16v4"></path><path d="m12 6 4 4"></path>',
+      'file-export': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M10 12h7"></path><path d="m14 9 3 3-3 3"></path>',
+      'file-import': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M14 12H7"></path><path d="m10 9-3 3 3 3"></path>',
+      'file-spreadsheet': '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="M8 12h8"></path><path d="M8 16h8"></path><path d="M10 10v8"></path><path d="M14 10v8"></path>',
+      'filter-off': '<path d="M4 5h16l-6 7v5l-4 2v-7z"></path><path d="m5 19 14-14"></path>',
+      flask: '<path d="M10 3v5l-5 8a4 4 0 0 0 3.4 6h7.2a4 4 0 0 0 3.4-6l-5-8V3"></path><path d="M9 8h6"></path><path d="M8 15h8"></path>',
+      history: '<path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v4h4"></path><path d="M12 7v5l3 2"></path>',
+      home: '<path d="m3 11 9-7 9 7"></path><path d="M5 10.5V20h14v-9.5"></path><path d="M9 20v-5h6v5"></path>',
+      'info-circle': '<circle cx="12" cy="12" r="9"></circle><path d="M12 10v5"></path><circle cx="12" cy="7.5" r="1"></circle>',
+      json: '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"></path><path d="M14 3v5h5"></path><path d="m10 10-2 2 2 2"></path><path d="m14 10 2 2-2 2"></path><path d="M12 9.5 11 14.5"></path>',
+      list: '<path d="M8 6h12"></path><path d="M8 12h12"></path><path d="M8 18h12"></path><circle cx="4.5" cy="6" r="1"></circle><circle cx="4.5" cy="12" r="1"></circle><circle cx="4.5" cy="18" r="1"></circle>',
+      login: '<path d="M14 4h5v16h-5"></path><path d="M10 12h9"></path><path d="m13 9 3 3-3 3"></path><path d="M5 4h5"></path><path d="M5 20h5"></path>',
+      logout: '<path d="M10 4H5v16h5"></path><path d="M9 12h10"></path><path d="m16 9 3 3-3 3"></path>',
+      plus: '<path d="M12 5v14"></path><path d="M5 12h14"></path>',
+      refresh: '<path d="M20 11a8 8 0 0 0-14-4"></path><path d="M4 7V3h4"></path><path d="M4 13a8 8 0 0 0 14 4"></path><path d="M20 17v4h-4"></path>',
+      search: '<circle cx="11" cy="11" r="6"></circle><path d="m20 20-4.2-4.2"></path>',
+      trash: '<path d="M5 7h14"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M6 7l1 12h10l1-12"></path><path d="M9 7V4h6v3"></path>',
+      user: '<circle cx="12" cy="8" r="4"></circle><path d="M5 20a7 7 0 0 1 14 0"></path>',
+      'circle-check': '<circle cx="12" cy="12" r="9"></circle><path d="m8 12 2.5 2.5L16 9"></path>',
+      'circle-x': '<circle cx="12" cy="12" r="9"></circle><path d="m9 9 6 6"></path><path d="m15 9-6 6"></path>',
+    };
+    const body = icons[name] || icons['info-circle'];
+    return `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">${body}</svg>`;
+  },
+
+  renderLocalIcons(root = document) {
+    if (!root) return;
+    const icons = [];
+    if (typeof Element !== 'undefined' && root instanceof Element && root.matches('.ti')) {
+      icons.push(root);
+    }
+    if (root.querySelectorAll) {
+      icons.push(...root.querySelectorAll('.ti'));
+    }
+    icons.forEach((iconEl) => {
+      const iconClass = Array.from(iconEl.classList).find((cls) => cls.startsWith('ti-') && cls !== 'ti');
+      if (!iconClass) return;
+      const name = iconClass.slice(3);
+      if (iconEl.dataset.iconReady === 'true' && iconEl.dataset.iconName === name) return;
+      iconEl.dataset.iconReady = 'true';
+      iconEl.dataset.iconName = name;
+      iconEl.setAttribute('aria-hidden', 'true');
+      iconEl.innerHTML = this.iconSvg(name);
     });
   },
 
