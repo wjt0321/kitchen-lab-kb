@@ -11,11 +11,12 @@
   <link rel="stylesheet" href="/static/style.css?v=claude-20260615">
 </head>
 <body>
-  <div id="app-shell" class="page">
-    <aside id="sidebar" class="navbar navbar-vertical navbar-expand-lg"></aside>
-    <div class="page-wrapper">
-      <div class="page-header" id="topbar"></div>
-      <div class="page-body" id="workbench">
+  <div id="app-shell" class="page workspace-shell">
+    <aside id="sidebar" class="navbar navbar-vertical navbar-expand-lg workspace-sidebar"></aside>
+    <div id="sidebar-backdrop" class="sidebar-backdrop hide" onclick="app.toggleSidebarDrawer(false)"></div>
+    <div class="page-wrapper workspace-main">
+      <div class="page-header workspace-topbar" id="topbar"></div>
+      <div class="page-body workspace-body" id="workbench">
         <div class="workbench-tabs" id="workbench-tabs"></div>
         <div class="workbench-body" id="workbench-body"></div>
       </div>

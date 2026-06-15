@@ -207,22 +207,34 @@ def check_frontend_design_contracts():
         "toast-title",
         "toast-message",
         "app-shell",
+        "workspace-shell",
         "navbar-expand-lg",
+        "sidebar-backdrop",
         "page-wrapper",
+        "workspace-sidebar",
+        "workspace-main",
+        "workspace-topbar",
         "page-header",
         "workbench-tabs",
         "workbench-body",
         "statusbar",
+        "toggleSidebarDrawer(force)",
+        "sidebar-drawer-toggle",
         "export-menu",
         "sidebar-brand",
         "sidebar-subnav",
         "topbar-actions",
+        "system-actions",
+        "current-user",
         "workbench-tab",
         "renderExportMenu",
         "renderSidebarNav",
         "renderTopbarActions",
         "renderStatusBar",
         "copyText",
+        "products-panel",
+        "pagination-prev",
+        "pagination-next",
         "renderLocalIcons(root = document)",
         "renderIcon(name, className = '')",
         "renderBrandMark()",
@@ -256,13 +268,17 @@ def check_frontend_design_contracts():
     sidebar_body = extract_js_method_block(js, "renderSidebarNav(path)", "sidebarSearch(")
     assert "renderBrandMark()" in sidebar_body
     assert "renderIcon(" in sidebar_body
+    assert "工具" not in sidebar_body, "sidebar should not duplicate topbar tool actions"
 
     brand_body = extract_js_method_block(js, "renderBrandMark()", "renderStatusBar(")
     assert "sidebar-brand-logo" in brand_body
     assert "brand-fallback" in brand_body
     assert "navbar-expand-lg" in base_html, "base shell should keep sidebar drawer scaffold"
     assert 'id="app-shell"' in base_html and 'id="sidebar"' in base_html
+    assert 'id="sidebar-backdrop"' in base_html, "base shell should include drawer backdrop"
     assert 'id="workbench-tabs"' in base_html and 'id="workbench-body"' in base_html
+    assert "workspace-shell" in base_html and "workspace-sidebar" in base_html
+    assert "workspace-main" in base_html and "workspace-topbar" in base_html
 
 
 def main():

@@ -18,7 +18,12 @@ def main():
                 ".login-card .page-hero-title, .login-card h2"
             ).count()
             login_button_count = page.get_by_role("button", name="进入工作台").count()
+            login_card_box = page.locator(".login-card").bounding_box()
+            viewport_height = page.evaluate("window.innerHeight")
             topbar_display = page.locator("#topbar").evaluate(
+                "el => getComputedStyle(el).display"
+            )
+            statusbar_display = page.locator("#statusbar").evaluate(
                 "el => getComputedStyle(el).display"
             )
             browser.close()
@@ -30,6 +35,9 @@ def main():
         assert login_title_count == 1, "login title should render on first load"
         assert login_button_count == 1, "workspace entry button should render on first load"
         assert topbar_display == "none", "topbar should be hidden on login page"
+        assert statusbar_display == "none", "statusbar should be hidden on login page"
+        assert login_card_box is not None, "login card should expose layout box"
+        assert login_card_box["y"] < viewport_height * 0.24, "login card should sit higher on the page"
 
 
 if __name__ == "__main__":

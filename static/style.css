@@ -89,18 +89,17 @@ code, pre, .text-mono {
 }
 
 #app-shell {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
   min-height: 100vh;
+  overflow: hidden;
 }
 
 #sidebar {
   position: sticky;
   top: 0;
   height: 100vh;
-  width: 240px;
-  flex-shrink: 0;
+  width: 272px;
   border-right: 1px solid var(--tblr-border-color);
   background: #f3f1e9;           /* bg_sunk */
   padding: 0;
@@ -113,15 +112,17 @@ code, pre, .text-mono {
 #sidebar.hide { display: none; }
 
 .page-wrapper {
-  flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--tblr-body-bg);
+  min-height: 100vh;
 }
 
 #topbar {
-  padding: 0 1.5rem;
+  position: relative;
+  z-index: 5;
+  padding: 0 1.25rem;
   border-bottom: 1px solid var(--tblr-border-color);
   background: var(--tblr-bg-surface);
 }
@@ -129,10 +130,9 @@ code, pre, .text-mono {
 #topbar.hide { display: none; }
 
 .page-body {
-  flex: 1;
-  padding: 1.25rem 1.5rem 2rem;
+  padding: 0;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 #workbench {
@@ -140,6 +140,21 @@ code, pre, .text-mono {
   flex-direction: column;
   padding: 0;
   overflow: hidden;
+}
+
+#workbench-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: rgba(250, 249, 245, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+#workbench-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 1rem 1.25rem 1.25rem;
 }
 
 /* Guest mode (login page) — no sidebar */
@@ -150,8 +165,8 @@ code, pre, .text-mono {
 
 #app.container-xl,
 #app {
-  width: min(100%, 1180px);
-  max-width: 1180px;
+  width: min(100%, 1500px);
+  max-width: 1500px;
   margin: 0 auto;
   padding-left: 0;
   padding-right: 0;
@@ -159,11 +174,18 @@ code, pre, .text-mono {
 
 .page-wrapper > .page-body > #app.container-xl {
   width: 100% !important;
-  max-width: min(1180px, 100%) !important;
+  max-width: min(1500px, 100%) !important;
   margin-left: auto !important;
   margin-right: auto !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1030;
+  background: rgba(23, 24, 27, 0.42);
 }
 
 /* ── 4. 侧边栏品牌与导航 ───────────────────────────────────── */
@@ -233,13 +255,13 @@ code, pre, .text-mono {
   align-items: center;
   gap: .625rem;
   padding: .55rem .75rem;
-  border-radius: 6px;
+  border-radius: 12px;
   color: #5a564f;               /* text_2 */
   font-weight: 600;
   font-size: .875rem;
   text-decoration: none;
-  transition: background .15s, color .15s;
-  margin: 2px 6px;
+  transition: background .15s, color .15s, box-shadow .15s, transform .15s;
+  margin: 3px 4px;
 }
 
 .sidebar-nav a:hover,
@@ -250,9 +272,10 @@ code, pre, .text-mono {
 
 .sidebar-nav a.active,
 .sidebar-nav .nav-link.active {
-  background: rgba(201,100,66,0.08);  /* accent_bg */
-  color: #c96442;                    /* accent */
+  background: rgba(201,100,66,0.14);  /* accent_bg */
+  color: #a94f33;                    /* accent */
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(201, 100, 66, 0.18);
 }
 
 .ti,
@@ -337,7 +360,7 @@ code, pre, .text-mono {
   font-size: .8125rem;
   font-weight: 500;
   color: #5a564f;
-  border-radius: 6px;
+  border-radius: 12px;
   text-decoration: none;
 }
 .sidebar-subnav a:hover {
@@ -345,9 +368,10 @@ code, pre, .text-mono {
   color: #2a2724;
 }
 .sidebar-subnav a.active {
-  background: rgba(201,100,66,0.08);
-  color: #c96442;
+  background: rgba(201,100,66,0.14);
+  color: #a94f33;
   font-weight: 600;
+  box-shadow: inset 0 0 0 1px rgba(201, 100, 66, 0.18);
 }
 
 /* 侧边栏底部用户区 */
@@ -369,8 +393,15 @@ code, pre, .text-mono {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: .75rem 0;
+  min-height: 64px;
+  padding: .625rem 0;
   gap: 1rem;
+}
+
+.topbar-leading {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
 }
 
 .topbar-spacer { flex: 1; }
@@ -395,14 +426,25 @@ code, pre, .text-mono {
   flex-wrap: wrap;
 }
 
+.system-actions {
+  justify-content: flex-end;
+}
+
+.sidebar-drawer-toggle {
+  display: none;
+  align-items: center;
+  gap: .45rem;
+  font-weight: 700;
+}
+
 /* ── 6. 页面标题区 ─────────────────────────────────────────── */
 .page-hero {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1.25rem;
-  padding: 1.5rem;
-  margin-bottom: 1.25rem;
+  padding: 1.125rem 1.25rem;
+  margin-bottom: 1rem;
   background: var(--tblr-card-bg);
   border: 1px solid var(--tblr-border-color);
   border-radius: var(--tblr-card-border-radius);
@@ -478,8 +520,9 @@ code, pre, .text-mono {
 .login-shell {
   min-height: 100vh;
   display: grid;
-  place-items: center;
-  padding: 2rem;
+  align-content: start;
+  justify-items: center;
+  padding: clamp(2rem, 10vh, 6rem) 1.5rem 2rem;
   background: linear-gradient(135deg, #f8f6f0 0%, #f3f1e9 50%, #f7f5ed 100%);
 }
 
@@ -609,6 +652,10 @@ code, pre, .text-mono {
   font-size: 14px;
   padding: 14px 16px;
 }
+
+.products-panel .card-header {
+  padding-bottom: 12px;
+}
 .card-body {
   padding: 16px;
 }
@@ -708,7 +755,7 @@ code, pre, .text-mono {
 .table-wrap {
   border: 1px solid var(--tblr-border-color);
   border-radius: var(--tblr-card-border-radius);
-  overflow: hidden;
+  overflow: auto;
 }
 
 .table-wrap .table {
@@ -1112,9 +1159,26 @@ kbd, .kbd {
   align-items: center;
   justify-content: flex-end;
   gap: .5rem;
-  margin-top: .75rem;
+  margin-top: 1rem;
   font-size: .8125rem;
   color: var(--tblr-muted);
+  flex-wrap: wrap;
+}
+
+.pagination-prev,
+.pagination-next {
+  display: inline-flex;
+  align-items: center;
+  gap: .35rem;
+  min-height: 38px;
+  min-width: 104px;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.pagination-label,
+.pagination-total {
+  padding: 0 .25rem;
 }
 
 .page-link {
@@ -1222,8 +1286,8 @@ kbd, .kbd {
   }
 
   .page-body {
-    padding-left: 1.25rem;
-    padding-right: 1.25rem;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .detail-grid {
@@ -1237,26 +1301,38 @@ kbd, .kbd {
 
 @media (max-width: 991px) {
   #app-shell {
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   #sidebar {
-    position: static;
-    height: auto;
-    width: 100%;
-    border-right: 0;
-    border-bottom: 1px solid var(--tblr-border-color);
+    position: fixed;
+    left: 0;
+    top: 0;
+    z-index: 1040;
+    width: min(82vw, 320px);
+    max-width: 320px;
+    transform: translateX(-100%);
+    transition: transform .22s ease;
+    box-shadow: 0 18px 48px rgba(42, 39, 36, 0.18);
+  }
+
+  #sidebar.sidebar-open {
+    transform: translateX(0);
   }
 
   .sidebar-nav {
-    flex-direction: row;
-    flex-wrap: wrap;
-    padding-bottom: .5rem;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    padding-bottom: 0;
   }
 
   .sidebar-nav a {
-    padding: .4rem .75rem;
+    padding: .6rem .8rem;
     font-size: .8125rem;
+  }
+
+  .sidebar-drawer-toggle {
+    display: inline-flex;
   }
 
   .detail-grid,
@@ -1276,10 +1352,6 @@ kbd, .kbd {
 }
 
 @media (max-width: 640px) {
-  .page-body {
-    padding: 1rem;
-  }
-
   .page-hero {
     padding: 1rem;
   }
@@ -1307,6 +1379,11 @@ kbd, .kbd {
     flex-direction: column;
     align-items: flex-start;
   }
+
+  #workbench-body {
+    padding: .875rem;
+  }
+
 
   .topbar-actions {
     width: 100%;

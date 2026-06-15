@@ -37,6 +37,7 @@ def main():
             page.on("console", lambda msg: console_messages.append((msg.type, msg.text)))
             page.goto(f"{base_url}/#/products/{product_id}", wait_until="networkidle")
 
+            page.locator(".detail-workspace").first.wait_for()
             assert page.locator(".page-hero-title").first.text_content().strip() == f"{code} 库存弹层产品"
             assert page.locator(".detail-workspace").count() == 1
             assert page.locator(".detail-primary").count() == 1
