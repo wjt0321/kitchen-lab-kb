@@ -5,7 +5,7 @@
 ## 当前交付状态
 
 - 应用入口、数据库、导入导出、备份和退出流程已经打通。
-- 前端已做工作台式视觉优化，支持桌面端和窄屏浏览。
+- 前端已完成工作台式重构：左侧导航 + 顶部系统栏 + 主任务区的单页工作台结构，侧边栏与图标已替换为本地 SVG，布局在放大/还原窗口时稳定不抖。
 - `dependencies/` 已放入本地 Python 依赖包，可用于无网络环境安装。
 - `docs/兴达样品库知识库使用指南.docx` 是给日常使用者看的图文说明；本 README 面向安装、迁移和维护。
 
@@ -26,21 +26,32 @@
 
 ## 界面预览
 
+### 登录页
+
+![登录页](docs/screenshots/codex-login.png)
+
 ### 产品工作台
 
-![产品工作台](docs/screenshots/tabler-products.png)
-
-### 产品详情
-
-![产品详情](docs/screenshots/tabler-product-detail.png)
+![产品工作台](docs/screenshots/codex-products.png)
 
 ### 成功率查询
 
-![成功率查询](docs/screenshots/tabler-success-rate.png)
+![成功率查询](docs/screenshots/codex-success-rate.png)
+
+### 导出菜单
+
+![导出菜单](docs/screenshots/04-export-menu.png)
+
+### 退出确认
+
+![退出确认](docs/screenshots/05-exit-confirm.png)
 
 ### 移动端适配
 
-<img src="docs/screenshots/tabler-mobile-products.png" alt="移动端产品列表" width="45%">
+<p>
+  <img src="docs/screenshots/codex-mobile-login.png" alt="移动端登录" width="45%">
+  <img src="docs/screenshots/codex-mobile-products.png" alt="移动端产品列表" width="45%">
+</p>
 
 更多操作截图见 [`docs/screenshots/`](docs/screenshots/)，完整图文说明见 [`docs/兴达样品库知识库使用指南.docx`](docs/兴达样品库知识库使用指南.docx)。
 
@@ -48,6 +59,7 @@
 
 - 当前前端已完成桌面工作台重构，主流程统一到“左侧导航 + 顶部系统操作 + 主任务区”的单页工作台结构。
 - 登录页、产品列表、产品详情、配方录入、配方详情和成功率页面都已切换到统一的 `page-hero` 与面板式布局。
+- 侧边栏图标已从远程 CDN 图标字体替换为本地 SVG，避免网络依赖，且在任何窗口尺寸下渲染稳定。
 - 库存调整已从浏览器原生 `prompt` 改为站内弹层，错误提示、导出菜单、Toast 提示和空状态也已统一到共享组件。
 - 桌面端优先保证高频录入、筛选和详情查看效率；窄屏下保留响应式布局，方便在较小窗口中继续使用。
 - 这次重构不改变现有后端 API、数据库结构和导入导出目录，迁移与备份方式保持不变。
