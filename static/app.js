@@ -3,6 +3,12 @@ const app = {
   user: localStorage.getItem('username') || '',
   currentPage: '',
 
+  // Workbench tabs
+  tabs: [],
+  activeTabId: null,
+  selectedProductIds: new Set(),
+  statusClock: null,
+
   init() {
     this.user = localStorage.getItem('username') || '';
     const route = this.routeFromLocation();
@@ -12,6 +18,7 @@ const app = {
     if (!this.user && route.path !== '/login') {
       location.hash = '#/login';
     }
+    this.startStatusClock();
     this.updateShell();
     this.route();
     window.addEventListener('hashchange', () => this.route());
@@ -26,6 +33,229 @@ const app = {
       this.closeModal();
       this.closeExportMenu();
     });
+  },
+
+  // ===== Status bar =====
+  startStatusClock() {
+    if (this.statusClock) clearInterval(this.statusClock);
+    this.statusClock = setInterval(() => this.updateStatusBar(), 1000);
+  },
+
+  renderStatusBar() {
+    const bar = document.getElementById('statusbar');
+    if (!bar) return;
+    if (!bar.querySelector('#sb-time')) {
+      bar.innerHTML = `
+        <span><i class="ti ti-checklist"></i> 选中 <strong id="sb-selected">0</strong> 条</span>
+        <span><i class="ti ti-database"></i> 上次备份 <strong id="sb-backup">--</strong></span>
+        <span><i class="ti ti-box"></i> 产品总数 <strong id="sb-total">--</strong></span>
+        <div class="statusbar-spacer"></div>
+        <span><i class="ti ti-clock"></i> <span id="sb-time">--</span></span>
+      `;
+      this.refreshStatusTotals();
+    }
+    this.updateStatusBar();
+  },
+
+  updateStatusBar() {
+    const selectedEl = document.getElementById('sb-selected');
+    const backupEl = document.getElementById('sb-backup');
+    const timeEl = document.getElementById('sb-time');
+
+    if (selectedEl) selectedEl.textContent = this.selectedProductIds.size;
+    if (timeEl) {
+      const now = new Date();
+      timeEl.textContent = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    }
+    if (backupEl) {
+      const last = localStorage.getItem('lastBackupAt');
+      backupEl.textContent = last ? this.formatDateTime(new Date(last)) : '--';
+    }
+  },
+
+  async refreshStatusTotals() {
+    const totalEl = document.getElementById('sb-total');
+    if (!totalEl) return;
+    try {
+      const r = await this.get('/api/products?status=全部&page_size=1');
+      totalEl.textContent = r.ok ? (r.data.total || 0) : '--';
+    } catch (_) {
+      totalEl.textContent = '--';
+    }
+  },
+
+  formatDateTime(d) {
+    if (!d) return '--';
+    const date = new Date(d);
+    if (isNaN(date.getTime())) return '--';
+    return `${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  },
+
+  // ===== Workbench tabs =====
+  getTabId(path) {
+    if (path === '/products') return 'products';
+    if (path === '/products/new') return 'product-new';
+    if (path.match(/^\/products\/\d+\/edit$/)) return `product-edit-${path.split('/')[2]}`;
+    if (path.match(/^\/products\/\d+$/)) return `product-${path.split('/')[2]}`;
+    if (path === '/recipes/new') return 'recipe-new';
+    if (path.match(/^\/recipes\/\d+\/edit$/)) return `recipe-edit-${path.split('/')[2]}`;
+    if (path.match(/^\/recipes\/\d+$/)) return `recipe-${path.split('/')[2]}`;
+    if (path === '/success-rate') return 'success-rate';
+    return null;
+  },
+
+  getTabMeta(path, params = new URLSearchParams()) {
+    const p = new URLSearchParams(params);
+    if (path === '/products') return { id: 'products', title: '产品列表', icon: 'box' };
+    if (path === '/products/new') return { id: 'product-new', title: '新增产品', icon: 'plus' };
+    if (path.match(/^\/products\/\d+\/edit$/)) {
+      const id = path.split('/')[2];
+      return { id: `product-edit-${id}`, title: `编辑产品 #${id}`, icon: 'edit' };
+    }
+    if (path.match(/^\/products\/\d+$/)) {
+      const id = path.split('/')[2];
+      const tab = p.get('tab') === 'success' ? '成功率' : '配方';
+      return { id: `product-${id}`, title: `产品 #${id}`, icon: 'box' };
+    }
+    if (path === '/recipes/new') return { id: 'recipe-new', title: '新增配方', icon: 'flask' };
+    if (path.match(/^\/recipes\/\d+\/edit$/)) {
+      const id = path.split('/')[2];
+      return { id: `recipe-edit-${id}`, title: `编辑配方 #${id}`, icon: 'edit' };
+    }
+    if (path.match(/^\/recipes\/\d+$/)) {
+      const id = path.split('/')[2];
+      return { id: `recipe-${id}`, title: `配方 #${id}`, icon: 'flask' };
+    }
+    if (path === '/success-rate') return { id: 'success-rate', title: '成功率', icon: 'chart-bar' };
+    return null;
+  },
+
+  getWorkbenchBody() {
+    return document.getElementById('workbench-body');
+  },
+
+  getWorkbenchTabs() {
+    return document.getElementById('workbench-tabs');
+  },
+
+  getTabContentContainer(id) {
+    return document.getElementById(`tab-content-${id}`);
+  },
+
+  ensureTabContentContainer(id) {
+    let el = this.getTabContentContainer(id);
+    if (!el) {
+      el = document.createElement('div');
+      el.id = `tab-content-${id}`;
+      el.className = 'tab-content-pane';
+      const body = this.getWorkbenchBody();
+      if (body) body.appendChild(el);
+    }
+    return el;
+  },
+
+  async openTab(path, params = new URLSearchParams()) {
+    const meta = this.getTabMeta(path, params);
+    if (!meta) return null;
+
+    const existing = this.tabs.find(t => t.id === meta.id);
+    if (existing) {
+      const becameActive = existing.id !== this.activeTabId;
+      existing.path = path;
+      existing.params = params;
+      this.activateTab(existing.id);
+      if (!becameActive) {
+        await this.renderActiveTab();
+      }
+      return existing;
+    }
+
+    const tab = { id: meta.id, path, params, meta };
+    this.tabs.push(tab);
+    this.ensureTabContentContainer(meta.id);
+    this.activateTab(meta.id);
+    await this.renderActiveTab();
+    return tab;
+  },
+
+  activateTab(id) {
+    if (!this.tabs.find(t => t.id === id)) return;
+    this.activeTabId = id;
+    this.renderTabs();
+    this.tabs.forEach(t => {
+      const el = this.getTabContentContainer(t.id);
+      if (el) el.classList.toggle('hide', t.id !== id);
+    });
+  },
+
+  closeTab(id, event) {
+    if (event) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+    const idx = this.tabs.findIndex(t => t.id === id);
+    if (idx === -1) return;
+    this.tabs.splice(idx, 1);
+
+    const el = this.getTabContentContainer(id);
+    if (el) el.remove();
+
+    if (this.activeTabId === id) {
+      const next = this.tabs[Math.min(idx, this.tabs.length - 1)] || this.tabs[this.tabs.length - 1];
+      if (next) {
+        this.activateTab(next.id);
+        location.hash = '#' + next.path + (next.params.toString() ? '?' + next.params.toString() : '');
+      } else {
+        this.activeTabId = null;
+        this.renderTabs();
+        location.hash = '#/products';
+      }
+    } else {
+      this.renderTabs();
+    }
+  },
+
+  renderTabs() {
+    const bar = this.getWorkbenchTabs();
+    if (!bar) return;
+    if (this.tabs.length === 0) {
+      bar.innerHTML = '';
+      return;
+    }
+    bar.innerHTML = this.tabs.map(t => {
+      const active = t.id === this.activeTabId ? 'active' : '';
+      return `
+        <div class="workbench-tab ${active}" onclick="app.activateTab('${t.id}'); app.syncHashToTab('${t.id}');">
+          <i class="ti ti-${t.meta.icon}"></i>
+          <span>${this.escapeHtml(t.meta.title)}</span>
+          <button type="button" class="workbench-tab-close" onclick="app.closeTab('${t.id}', event)" aria-label="关闭">&times;</button>
+        </div>
+      `;
+    }).join('');
+  },
+
+  syncHashToTab(id) {
+    const tab = this.tabs.find(t => t.id === id);
+    if (!tab) return;
+    const hash = '#' + tab.path + (tab.params.toString() ? '?' + tab.params.toString() : '');
+    if (location.hash !== hash) location.hash = hash;
+  },
+
+  async renderActiveTab() {
+    const tab = this.tabs.find(t => t.id === this.activeTabId);
+    if (!tab) return;
+    const el = this.getTabContentContainer(tab.id);
+    if (!el) return;
+    const { path, params } = tab;
+
+    if (path === '/products') await this.renderProducts(el, params);
+    else if (path === '/products/new') await this.renderProductForm(el, null);
+    else if (path.match(/^\/products\/\d+\/edit$/)) await this.renderProductForm(el, parseInt(path.split('/')[2]));
+    else if (path.match(/^\/products\/\d+$/)) await this.renderProductDetail(el, parseInt(path.split('/')[2]), params);
+    else if (path === '/recipes/new') await this.renderRecipeForm(el, null, params.get('product_id'));
+    else if (path.match(/^\/recipes\/\d+\/edit$/)) await this.renderRecipeForm(el, parseInt(path.split('/')[2]));
+    else if (path.match(/^\/recipes\/\d+$/)) await this.renderRecipeDetail(el, parseInt(path.split('/')[2]));
+    else if (path === '/success-rate') await this.renderSuccessRate(el, params);
   },
 
   updateShell() {
@@ -48,6 +278,11 @@ const app = {
     if (shell) {
       shell.classList.toggle('page-guest', !loggedIn);
     }
+
+    const tabBar = this.getWorkbenchTabs();
+    if (tabBar) tabBar.classList.toggle('hide', !loggedIn);
+
+    this.renderStatusBar();
   },
 
   routeFromLocation() {
@@ -59,7 +294,7 @@ const app = {
     return { path, params: new URLSearchParams(location.search || '') };
   },
 
-  route() {
+  async route() {
     const { path, params } = this.routeFromLocation();
     this.currentPage = path;
     if (path === '/login' && this.user) {
@@ -68,27 +303,42 @@ const app = {
     }
     this.updateShell();
 
-    const appEl = document.getElementById('app');
-    if (!appEl) return;
+    const body = this.getWorkbenchBody();
+    const tabBar = this.getWorkbenchTabs();
+    if (!body) return;
 
-    if (path === '/login') { this.renderLogin(appEl); return; }
-    if (!this.user) { location.hash = '#/login'; return; }
+    if (path === '/login') {
+      if (tabBar) tabBar.classList.add('hide');
+      body.innerHTML = '';
+      this.tabs = [];
+      this.activeTabId = null;
+      this.renderLogin(body);
+      return;
+    }
 
-    if (path === '/products') this.renderProducts(appEl, params);
-    else if (path === '/products/new') this.renderProductForm(appEl, null);
-    else if (path.match(/^\/products\/\d+\/edit$/)) this.renderProductForm(appEl, parseInt(path.split('/')[2]));
-    else if (path.match(/^\/products\/\d+$/)) this.renderProductDetail(appEl, parseInt(path.split('/')[2]), params);
-    else if (path === '/recipes/new') this.renderRecipeForm(appEl, null, params.get('product_id'));
-    else if (path.match(/^\/recipes\/\d+\/edit$/)) this.renderRecipeForm(appEl, parseInt(path.split('/')[2]));
-    else if (path.match(/^\/recipes\/\d+$/)) this.renderRecipeDetail(appEl, parseInt(path.split('/')[2]));
-    else if (path === '/success-rate') this.renderSuccessRate(appEl, params);
-    else {
-      appEl.innerHTML = this.renderEmptyState({
+    if (!this.user) {
+      location.hash = '#/login';
+      return;
+    }
+
+    if (tabBar) tabBar.classList.remove('hide');
+
+    // Clear any direct-rendered content (e.g., login shell) when switching to tabbed views
+    Array.from(body.children).forEach(child => {
+      if (!child.classList.contains('tab-content-pane')) child.remove();
+    });
+
+    const tabId = this.getTabId(path);
+    if (!tabId) {
+      body.innerHTML = this.renderEmptyState({
         title: '页面不存在',
         body: '请从左侧导航重新选择工作区页面。',
         action: '<a class="btn btn-primary" href="#/products"><i class="ti ti-home"></i> 返回产品工作台</a>',
       });
+      return;
     }
+
+    await this.openTab(path, params);
   },
 
   // ===== API =====
@@ -183,6 +433,10 @@ const app = {
   },
 
   renderSidebarNav(path) {
+    const productActive = path.startsWith('/products');
+    const recipeActive = path.startsWith('/recipes');
+    const successActive = path.startsWith('/success-rate');
+    const q = this.routeFromLocation().params.get('q') || '';
     return `
       <div class="sidebar-brand">
         <span class="brand-mark">KL</span>
@@ -191,11 +445,53 @@ const app = {
           <div class="sidebar-brand-subtitle">Kitchen Lab</div>
         </div>
       </div>
+      <div class="sidebar-search">
+        <input class="form-control" id="sidebar-search" placeholder="搜索产品…" value="${this.escapeHtml(q)}" onkeydown="if(event.key==='Enter')app.sidebarSearch()">
+      </div>
       <nav class="sidebar-nav">
-        <a class="${path.startsWith('/products') ? 'active' : ''}" href="#/products"><i class="ti ti-box"></i>产品</a>
-        <a class="${path.startsWith('/success-rate') ? 'active' : ''}" href="#/success-rate"><i class="ti ti-chart-bar"></i>成功率</a>
+        <a class="${productActive ? 'active' : ''}" href="#/products"><i class="ti ti-box"></i>产品</a>
       </nav>
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">产品管理</div>
+        <nav class="sidebar-subnav">
+          <a class="${path === '/products' ? 'active' : ''}" href="#/products"><i class="ti ti-list"></i>全部产品</a>
+          <a class="${path === '/products/new' ? 'active' : ''}" href="#/products/new"><i class="ti ti-plus"></i>新增产品</a>
+          <a class="${(new URLSearchParams(location.hash.split('?')[1]||'')).get('status')==='archived' ? 'active' : ''}" href="#/products?status=archived"><i class="ti ti-archive"></i>已归档</a>
+        </nav>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">配方记录</div>
+        <nav class="sidebar-subnav">
+          <a class="${recipeActive && !path.includes('/new') ? 'active' : ''}" href="#/products"><i class="ti ti-flask"></i>按产品查看</a>
+          <a class="${successActive ? 'active' : ''}" href="#/success-rate"><i class="ti ti-chart-bar"></i>成功率</a>
+        </nav>
+      </div>
+      <div class="sidebar-group">
+        <div class="sidebar-group-title">工具</div>
+        <nav class="sidebar-subnav">
+          <a href="javascript:app.exportExcel('products')"><i class="ti ti-file-spreadsheet"></i>Excel 导出</a>
+          <a href="javascript:app.exportJson()"><i class="ti ti-json"></i>JSON 导出</a>
+          <a href="javascript:app.backup()"><i class="ti ti-database"></i>一键备份</a>
+        </nav>
+      </div>
+      <div class="sidebar-footer">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="avatar avatar-sm" style="background:var(--tblr-primary);color:#fff;"><i class="ti ti-user"></i></span>
+          <div class="flex-grow-1 min-width-0">
+            <div class="fw-semibold text-truncate">${this.escapeHtml(this.user)}</div>
+            <div class="text-muted-sm">已登录</div>
+          </div>
+        </div>
+        <button class="btn btn-outline-danger btn-sm w-100" onclick="app.confirmExit()"><i class="ti ti-logout me-1"></i>退出</button>
+      </div>
     `;
+  },
+
+  sidebarSearch() {
+    const q = document.getElementById('sidebar-search')?.value.trim() || '';
+    const p = new URLSearchParams();
+    if (q) p.set('q', q);
+    location.hash = '#/products' + (p.toString() ? '?' + p.toString() : '');
   },
 
   renderTopbarActions() {
@@ -311,6 +607,7 @@ const app = {
     if (r.ok) {
       this.user = user;
       localStorage.setItem('username', user);
+      this.refreshStatusTotals();
       location.hash = '#/products';
     } else {
       this.toast(r.error || '登录失败', 'error');
@@ -362,9 +659,16 @@ const app = {
     const { items, total, page_size } = r.data;
     const totalPages = Math.max(1, Math.ceil(total / page_size));
 
+    // Reset selection when list reloads (but keep if same query/page? simpler: reset)
+    this.selectedProductIds.clear();
+    this.currentProducts = items || [];
+    this.updateStatusBar();
+    const totalEl = document.getElementById('sb-total');
+    if (totalEl) totalEl.textContent = total || 0;
+
     let rows = '';
     if (items.length === 0) {
-      rows = `<tr><td colspan="8">${this.renderEmptyState({
+      rows = `<tr><td colspan="9">${this.renderEmptyState({
         title: q ? '没有找到匹配的产品' : '暂无产品',
         body: q ? '请尝试更换关键词，或清空筛选条件。' : '还没有录入任何产品。先新建一个产品，再记录配方试验。',
         action: q
@@ -373,7 +677,8 @@ const app = {
       })}</td></tr>`;
     } else {
       rows = items.map(p => `
-        <tr onclick="location.hash='#/products/${p.id}'" class="${p.状态==='archived'?'archived':''}">
+        <tr class="${p.状态==='archived'?'archived':''}" onclick="if(!event.target.closest('a,button,input'))location.hash='#/products/${p.id}'">
+          <td><input type="checkbox" class="form-check-input" value="${p.id}" onchange="app.toggleProductSelection(${p.id}, this.checked)" onclick="event.stopPropagation()"></td>
           <td><a href="#/products/${p.id}" onclick="event.stopPropagation()">${this.escapeHtml(p.品号)}</a></td>
           <td>${this.escapeHtml(p.品名)}</td>
           <td>${this.escapeHtml(p.规格)}</td>
@@ -413,14 +718,20 @@ const app = {
       `,
       actions: `
         <div class="products-hero-actions">
-          <button class="btn btn-ghost-secondary btn-icon" title="重置" onclick="location.hash='#/products'"><i class="ti ti-refresh"></i></button>
-          <a class="btn btn-primary" href="#/products/new"><i class="ti ti-plus"></i> 新建产品</a>
+          <button class="btn btn-outline-secondary" title="重置" onclick="location.hash='#/products'"><i class="ti ti-refresh me-1"></i>重置</button>
         </div>
       `,
     });
 
     el.innerHTML = `
       ${hero}
+      <div class="action-bar">
+        <a class="btn btn-primary" href="#/products/new"><i class="ti ti-plus me-1"></i>新增产品</a>
+        <input id="action-import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
+        <button class="btn btn-outline-secondary" onclick="app.importData()"><i class="ti ti-file-import me-1"></i>批量导入</button>
+        <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()"><i class="ti ti-archive me-1"></i>批量归档</button>
+        <button class="btn btn-outline-secondary" onclick="app.exportSelectedProducts()"><i class="ti ti-file-export me-1"></i>导出选中</button>
+      </div>
       <div class="card">
         <div class="card-header">
           <div>
@@ -429,8 +740,8 @@ const app = {
           </div>
         </div>
         <div class="table-responsive">
-          <table class="table table-vcenter card-table">
-            <thead><tr><th>品号</th><th>品名</th><th>规格</th><th>当前数量</th><th>状态</th><th>配方数</th><th>创建时间</th><th>操作</th></tr></thead>
+          <table class="table table-vcenter card-table products-table">
+            <thead><tr><th class="th-check"><input type="checkbox" class="form-check-input" id="select-all-products" onclick="app.toggleAllProducts(this.checked)"></th><th class="th-code">品号</th><th class="th-name">品名</th><th class="th-spec">规格</th><th class="th-qty">当前数量</th><th class="th-status">状态</th><th class="th-recipes">配方数</th><th class="th-date">创建时间</th><th class="th-actions">操作</th></tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
@@ -442,6 +753,56 @@ const app = {
         <span>第 ${page} / ${totalPages} 页</span>
         <button class="btn btn-outline-secondary btn-sm" ${page>=totalPages?'disabled':''} onclick="app.navProducts({page:${page+1}})"><i class="ti ti-chevron-right"></i></button>
       </div>`:''}`;
+  },
+
+  toggleProductSelection(id, checked) {
+    if (checked) this.selectedProductIds.add(id);
+    else this.selectedProductIds.delete(id);
+    this.updateStatusBar();
+  },
+
+  toggleAllProducts(checked) {
+    document.querySelectorAll('#workbench-body tbody input[type="checkbox"]').forEach(cb => {
+      const id = parseInt(cb.value);
+      if (!id) return;
+      cb.checked = checked;
+      if (checked) this.selectedProductIds.add(id);
+      else this.selectedProductIds.delete(id);
+    });
+    this.updateStatusBar();
+  },
+
+  async batchArchiveProducts() {
+    const ids = [...this.selectedProductIds];
+    if (ids.length === 0) { this.toast('请先勾选要归档的产品', 'info'); return; }
+    this.modal(`确认归档 ${ids.length} 个产品?`, '归档后默认不会在产品列表显示，但可以从"已归档"中恢复。', async () => {
+      for (const id of ids) {
+        const r = await this.post(`/api/products/${id}/archive`);
+        if (!r.ok) this.toast(`归档 #${id} 失败: ${r.error || ''}`, 'error');
+      }
+      this.selectedProductIds.clear();
+      this.updateStatusBar();
+      this.refreshStatusTotals();
+      this.toast('批量归档完成');
+      this.route();
+    }, '确认归档');
+  },
+
+  exportSelectedProducts() {
+    const ids = [...this.selectedProductIds];
+    if (ids.length === 0) { this.toast('请先勾选要导出的产品', 'info'); return; }
+    const selected = (this.currentProducts || []).filter(p => ids.includes(p.id));
+    if (selected.length === 0) { this.toast('未找到选中产品的数据', 'error'); return; }
+    const blob = new Blob([JSON.stringify(selected, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `selected-products-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    this.toast(`已导出 ${selected.length} 个产品`);
   },
 
   navProducts(extra={}) {
@@ -525,6 +886,7 @@ const app = {
     btn.disabled = false; btn.innerHTML = '<i class="ti ti-device-floppy me-1"></i>保存';
     if (r.ok) {
       this.toast(id?`已保存产品 ${payload.品号}`:`已创建产品 ${payload.品号}`);
+      this.refreshStatusTotals();
       location.hash = `#/products/${id||r.data.id}`;
     } else {
       this.toast(r.error || '保存失败', 'error');
@@ -717,8 +1079,8 @@ const app = {
             </div>
           </div>
           <div class="filter-actions">
-            <button class="btn btn-primary btn-icon" title="查询" onclick="app.searchProductRecipes(${productId})"><i class="ti ti-search"></i></button>
-            <a class="btn btn-ghost-secondary btn-icon" title="重置" href="#/products/${productId}?tab=recipes"><i class="ti ti-refresh"></i></a>
+            <button class="btn btn-primary" title="查询" onclick="app.searchProductRecipes(${productId})"><i class="ti ti-search me-1"></i>查询</button>
+            <a class="btn btn-outline-secondary" title="重置" href="#/products/${productId}?tab=recipes"><i class="ti ti-refresh me-1"></i>重置</a>
           </div>
           <datalist id="material-list"></datalist>
         </div>
@@ -734,27 +1096,66 @@ const app = {
       return;
     }
 
-    const rows = items.map(item => `
-      <tr onclick="location.hash='#/recipes/${item.id}'">
-        <td>${this.escapeHtml(item.试验日期)}</td>
-        <td>${this.escapeHtml(item.配方名称||'-')}</td>
-        <td>${this.statusBadge(item.状态)}</td>
-        <td>${item.用了多少||'-'}${item.用了多少?'g':''}</td>
-        <td>${this.formatSuccessRate(item)}</td>
-        <td>${this.escapeHtml(item.created_by||'-')}</td>
-        <td><a class="btn btn-outline-secondary btn-sm" href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
-      </tr>
-    `).join('');
+    const grouped = this.groupRecipesByMonth(items);
+    const groupKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+    const timeline = groupKeys.map((key, idx) => {
+      const groupItems = grouped[key];
+      const success = groupItems.filter(i => i.状态 === 'success').length;
+      const failed = groupItems.filter(i => i.状态 === 'failed').length;
+      const rows = groupItems.map(item => `
+        <tr onclick="location.hash='#/recipes/${item.id}'">
+          <td>${this.escapeHtml(item.试验日期)}</td>
+          <td>${this.escapeHtml(item.配方名称||'-')}</td>
+          <td>${this.statusBadge(item.状态)}</td>
+          <td>${item.用了多少||'-'}${item.用了多少?'g':''}</td>
+          <td>${this.formatSuccessRate(item)}</td>
+          <td>${this.escapeHtml(item.created_by||'-')}</td>
+          <td><a class="btn btn-outline-secondary btn-sm" href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
+        </tr>
+      `).join('');
+      return `
+        <div class="recipe-timeline-group ${idx > 0 ? 'collapsed' : ''}" id="recipe-group-${key}" data-group="${key}">
+          <div class="recipe-timeline-header" onclick="app.toggleRecipeGroup('${key}')">
+            <div class="recipe-timeline-title">
+              <i class="ti ti-chevron-down recipe-timeline-toggle"></i>
+              <span>${this.escapeHtml(key)}</span>
+              <span class="recipe-timeline-meta">${groupItems.length} 次试验 · ${success} 成功 · ${failed} 失败</span>
+            </div>
+            <div class="recipe-timeline-meta">${groupItems[groupItems.length-1]?.试验日期 || ''} ~ ${groupItems[0]?.试验日期 || ''}</div>
+          </div>
+          <div class="recipe-timeline-body">
+            <div class="table-responsive">
+              <table class="table table-vcenter card-table">
+                <thead><tr><th>日期</th><th>配方名称</th><th>状态</th><th>用量</th><th>成功率</th><th>创建人</th><th>操作</th></tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
 
     box.innerHTML = `
       ${filters}
-      <div class="table-responsive">
-        <table class="table table-vcenter card-table">
-          <thead><tr><th>日期</th><th>配方名称</th><th>状态</th><th>用量</th><th>成功率</th><th>创建人</th><th>操作</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+      <div class="recipe-timeline">
+        ${timeline}
       </div>`;
     this.loadMaterialSuggestions();
+  },
+
+  groupRecipesByMonth(items) {
+    return items.reduce((acc, item) => {
+      const date = item.试验日期 || item.created_at || '';
+      const key = date.substring(0, 7) || '未知时间';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(item);
+      return acc;
+    }, {});
+  },
+
+  toggleRecipeGroup(key) {
+    document.getElementById(`recipe-group-${key}`)?.classList.toggle('collapsed');
   },
 
   searchProductRecipes(productId) {
@@ -860,7 +1261,7 @@ const app = {
   archiveProduct(id) {
     this.modal('确认归档这个产品?', '归档后默认不会在产品列表显示，但可以从"已归档"中恢复。', () => {
       this.post(`/api/products/${id}/archive`).then(r => {
-        if (r.ok) { this.toast('已归档'); location.hash='#/products'; }
+        if (r.ok) { this.toast('已归档'); this.refreshStatusTotals(); location.hash='#/products'; }
         else this.toast(r.error, 'error');
       });
     }, '确认归档');
@@ -868,7 +1269,7 @@ const app = {
 
   restoreProduct(id) {
     this.post(`/api/products/${id}/restore`).then(r => {
-      if (r.ok) { this.toast('已恢复'); this.route(); }
+      if (r.ok) { this.toast('已恢复'); this.refreshStatusTotals(); this.route(); }
       else this.toast(r.error, 'error');
     });
   },
@@ -876,7 +1277,7 @@ const app = {
   deleteProduct(id) {
     this.modal('确认删除这个产品?', '删除后会移除该产品及其配方记录，不可恢复。', () => {
       this.del(`/api/products/${id}`).then(r => {
-        if (r.ok) { this.toast('已删除'); location.hash='#/products?status=archived'; }
+        if (r.ok) { this.toast('已删除'); this.refreshStatusTotals(); location.hash='#/products?status=archived'; }
         else this.toast(r.error, 'error');
       });
     }, '确认删除', true);
@@ -982,7 +1383,7 @@ const app = {
               <h3 class="card-title">原料 / 辅料</h3>
               <div class="text-muted-sm">按试验录入组合，保留常用名称与单位建议。</div>
             </div>
-            <button class="btn btn-outline-secondary btn-icon" title="添加行" onclick="app.addMatRow()"><i class="ti ti-plus"></i></button>
+            <button class="btn btn-outline-secondary" title="添加行" onclick="app.addMatRow()"><i class="ti ti-plus me-1"></i>添加一行</button>
           </div>
           <div class="table-responsive">
             <table class="table table-vcenter card-table">
@@ -1141,7 +1542,7 @@ const app = {
       actions: `
         <div class="d-flex gap-2 flex-wrap">
           <button class="btn btn-primary" onclick="app.duplicateRecipe(${d.id})"><i class="ti ti-copy me-1"></i>复制配方</button>
-          <a class="btn btn-outline-secondary btn-icon" href="#/recipes/${d.id}/edit" title="编辑"><i class="ti ti-edit"></i></a>
+          <a class="btn btn-outline-secondary" href="#/recipes/${d.id}/edit" title="编辑"><i class="ti ti-edit me-1"></i>编辑</a>
           <button class="btn btn-danger" onclick="app.deleteRecipe(${d.id})"><i class="ti ti-trash me-1"></i>删除</button>
         </div>
       `,
@@ -1298,8 +1699,8 @@ const app = {
         <div class="success-rate-hero">
           <select class="form-select" id="sr-product" onchange="app.searchSuccessRate()">${options}</select>
           <input class="form-control" id="sr-min-trials" type="number" min="1" step="1" placeholder="最少试验次数" value="${this.escapeHtml(minTrials)}">
-          <button class="btn btn-ghost-secondary btn-icon" title="重置" onclick="location.hash='#/success-rate'"><i class="ti ti-refresh"></i></button>
-          <button class="btn btn-primary btn-icon" title="查询" onclick="app.searchSuccessRate()"><i class="ti ti-search"></i></button>
+          <button class="btn btn-outline-secondary" title="重置" onclick="location.hash='#/success-rate'"><i class="ti ti-refresh me-1"></i>重置</button>
+          <button class="btn btn-primary" title="查询" onclick="app.searchSuccessRate()"><i class="ti ti-search me-1"></i>查询</button>
         </div>
       `,
     });
@@ -1384,8 +1785,8 @@ const app = {
             </div>
           </div>
           <div class="filter-actions">
-            <button class="btn btn-primary btn-icon" title="查询" onclick="app.searchSuccessRate()"><i class="ti ti-search"></i></button>
-            <a class="btn btn-ghost-secondary btn-icon" title="重置" href="#/success-rate"><i class="ti ti-refresh"></i></a>
+            <button class="btn btn-primary" title="查询" onclick="app.searchSuccessRate()"><i class="ti ti-search me-1"></i>查询</button>
+            <a class="btn btn-outline-secondary" title="重置" href="#/success-rate"><i class="ti ti-refresh me-1"></i>重置</a>
           </div>
         </div>
       </div>
@@ -1437,7 +1838,11 @@ const app = {
 
   async runBackup() {
     const r = await this.post('/api/backup');
-    if (r.ok) this.toast('备份完成: ' + r.data.filename);
+    if (r.ok) {
+      localStorage.setItem('lastBackupAt', new Date().toISOString());
+      this.toast('备份完成: ' + r.data.filename);
+      this.updateStatusBar();
+    }
     else this.toast(r.error || '备份失败', 'error');
   },
 
@@ -1489,7 +1894,7 @@ const app = {
 
   importData() {
     this.closeExportMenu();
-    const input = document.getElementById('import-file');
+    const input = document.getElementById('import-file') || document.getElementById('action-import-file');
     if (!input) return;
     input.value = '';
     input.click();
@@ -1517,6 +1922,7 @@ const app = {
       if (r.ok) {
         const data = r.data || {};
         this.toast(`导入完成: 产品 ${data.products || 0} / 配方 ${data.recipes || 0}`);
+        this.refreshStatusTotals();
         location.hash = '#/products';
         this.route();
       } else {

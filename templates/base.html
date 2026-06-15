@@ -10,16 +10,18 @@
   <!-- Tabler Icons -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.14.0/tabler-icons.min.css">
   <!-- Custom overrides -->
-  <link rel="stylesheet" href="/static/style.css?v=tabler-20260609-2">
+  <link rel="stylesheet" href="/static/style.css?v=claude-20260615">
 </head>
 <body>
   <div id="app-shell" class="page">
     <aside id="sidebar" class="navbar navbar-vertical navbar-expand-lg"></aside>
     <div class="page-wrapper">
       <div class="page-header" id="topbar"></div>
-      <div class="page-body">
-        <div class="container-xl" id="app"></div>
+      <div class="page-body" id="workbench">
+        <div class="workbench-tabs" id="workbench-tabs"></div>
+        <div class="workbench-body" id="workbench-body"></div>
       </div>
+      <div class="statusbar" id="statusbar"></div>
     </div>
   </div>
 
@@ -31,7 +33,7 @@
   <!-- Tabler JS (includes Bootstrap) -->
   <script src="https://cdn.jsdelivr.net/npm/@tabler/core@1.0.0-beta21/dist/js/tabler.min.js"></script>
   <!-- App -->
-  <script src="/static/app.js?v=tabler-20260609-2"></script>
+  <script src="/static/app.js?v=claude-20260615"></script>
   <script>
     document.addEventListener('DOMContentLoaded', () => app.init());
   </script>
