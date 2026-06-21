@@ -53,6 +53,12 @@ Windows 日常使用推荐直接双击：
 兴达样品库知识库.lnk
 ```
 
+如果项目根目录存在打包好的桌面程序，启动脚本会优先运行：
+
+```text
+kitchen-lab-kb.exe
+```
+
 也可以双击启动脚本：
 
 ```text
@@ -62,8 +68,8 @@ Windows 日常使用推荐直接双击：
 启动脚本会执行这些动作：
 
 1. 进入项目目录。
-2. 检查 Python 依赖是否已安装。
-3. 如缺少依赖，优先从 `dependencies/` 离线安装。
+2. 如果存在 `kitchen-lab-kb.exe`，直接启动该桌面程序（无命令行窗口）。
+3. 否则检查 Python 依赖是否已安装；如缺少依赖，优先从 `dependencies/` 离线安装。
 4. 使用 `pythonw.exe` 或 `python.exe` 启动 `startup.py`。
 5. 打开本地系统页面，默认地址为 `http://127.0.0.1:7777/`。
 
@@ -272,3 +278,25 @@ python -m pip install --no-index --find-links dependencies -r requirements.txt
 Get-ChildItem tests\check_*.py | ForEach-Object { python $_.FullName }
 python -m py_compile startup.py app.py export.py import_data.py shutdown.py auth.py backup.py db.py
 ```
+
+## 构建 Windows 桌面应用
+
+项目已使用 PyInstaller 配置好单文件桌面程序构建脚本：
+
+```bash
+python build.py
+```
+
+构建完成后会生成：
+
+```text
+dist/kitchen-lab-kb.exe
+```
+
+把这个 `exe` 放在项目根目录，双击 `兴达样品库知识库.lnk` 或 `启动样品库知识库.bat` 即可直接启动桌面窗口，无需用户安装 Python 或依赖。
+
+### 更新与数据隔离
+
+- **程序更新**：直接替换 `kitchen-lab-kb.exe` 即可，无需改动数据目录。
+- **用户数据**：`data/`、`backups/`、`exports/`、`logs/` 始终与 `exe` 同目录，更新时不会丢失。
+- **回退源码运行**：删除或重命名 `kitchen-lab-kb.exe`，启动脚本会自动回退到 Python 源码启动方式。

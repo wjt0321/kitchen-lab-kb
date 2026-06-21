@@ -11,9 +11,14 @@ import webbrowser
 
 import uvicorn
 
+import paths
+
+# Explicitly import the ASGI app module so PyInstaller bundles it.
+import app  # noqa: F401
+
 HOST = "127.0.0.1"
 PORT = 7777
-ROOT_DIR = os.path.dirname(__file__)
+ROOT_DIR = paths.get_root_dir()
 LOG_DIR = os.path.join(ROOT_DIR, "logs")
 LOG_PATH = os.path.join(LOG_DIR, "startup.log")
 _shutdown_started = False

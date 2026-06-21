@@ -6,7 +6,9 @@ import os
 from datetime import datetime
 from typing import List, Tuple, Any, Optional
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "kitchen.db")
+import paths
+
+DB_PATH = os.path.join(paths.get_root_dir(), "data", "kitchen.db")
 
 # ---------------------------------------------------------------------------
 # Schema

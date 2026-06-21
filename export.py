@@ -8,8 +8,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 from db import db_query
+import paths
 
-EXPORT_DIR = os.path.join(os.path.dirname(__file__), "exports")
+EXPORT_DIR = os.path.join(paths.get_root_dir(), "exports")
 LATEST_DIR_NAME = "_latest"
 LEGACY_DIR_NAME = "_历史散文件"
 EXPORT_FOLDERS = {

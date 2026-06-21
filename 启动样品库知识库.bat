@@ -7,6 +7,14 @@ if not exist "%LOGDIR%" mkdir "%LOGDIR%"
 set "BOOTLOG=%LOGDIR%\launcher.log"
 echo [%date% %time%] launcher start > "%BOOTLOG%"
 
+REM Prefer bundled executable if present (PyInstaller build)
+if exist "%ROOT%kitchen-lab-kb.exe" (
+  echo Starting bundled executable... >> "%BOOTLOG%"
+  start "" "%ROOT%kitchen-lab-kb.exe"
+  exit /b 0
+)
+
+REM Fallback to Python runtime (development / source deployment)
 python -c "import fastapi, uvicorn, webview, openpyxl" >nul 2>>"%BOOTLOG%"
 if errorlevel 1 (
   echo Installing dependencies from local folder... >> "%BOOTLOG%"

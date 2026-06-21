@@ -5,8 +5,10 @@ import shutil
 import zipfile
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "data", "kitchen.db")
-BACKUP_DIR = os.path.join(os.path.dirname(__file__), "backups")
+import paths
+
+DB_PATH = os.path.join(paths.get_root_dir(), "data", "kitchen.db")
+BACKUP_DIR = os.path.join(paths.get_root_dir(), "backups")
 LEGACY_DIR_NAME = "_历史散文件"
 KEEP_COUNT = 5
 BACKUP_PATTERN = "kitchen_*.zip"

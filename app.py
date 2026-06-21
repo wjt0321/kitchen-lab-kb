@@ -20,6 +20,7 @@ from backup import do_backup
 from export import export_excel, export_import_template, export_json
 from import_data import import_base64
 from shutdown import request_shutdown
+import paths
 
 app = FastAPI(title="样品库知识库")
 SHUTDOWN_HANDLER = request_shutdown
@@ -43,8 +44,8 @@ init_db()
 # ---------------------------------------------------------------------------
 # Template helpers
 # ---------------------------------------------------------------------------
-TPL_DIR = os.path.join(os.path.dirname(__file__), "templates")
-STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+TPL_DIR = os.path.join(paths.get_resource_dir(), "templates")
+STATIC_DIR = os.path.join(paths.get_resource_dir(), "static")
 
 
 def render(name: str, **kwargs) -> str:
@@ -1088,12 +1089,12 @@ def _mime_type(path: str) -> str:
 
 @app.get("/兴达logo.ico")
 async def logo_ico():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "兴达logo.ico"))
+    return FileResponse(os.path.join(paths.get_resource_dir(), "兴达logo.ico"))
 
 
 @app.get("/兴达logo.jpg")
 async def logo_jpg():
-    return FileResponse(os.path.join(os.path.dirname(__file__), "兴达logo.jpg"))
+    return FileResponse(os.path.join(paths.get_resource_dir(), "兴达logo.jpg"))
 
 
 @app.get("/static/{path:path}")
