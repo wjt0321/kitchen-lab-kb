@@ -1,7 +1,9 @@
 """FastAPI application — APIs + page routes."""
 import os
+import re
+import sqlite3
 from datetime import date
-from typing import List, Optional
+from typing import Annotated, List, Optional
 
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse, Response
@@ -107,6 +109,19 @@ class RecipeInput(BaseModel):
             raise ValueError("状态必须是 success、failed 或 pending")
         return value
 
+    @field_validator("试验日期")
+    @classmethod
+    def _valid_date(cls, value):
+        if not value:
+            raise ValueError("试验日期不能为空")
+        if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("试验日期格式错误，请使用 YYYY-MM-DD")
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("试验日期格式错误，请使用 YYYY-MM-DD") from exc
+        return value
+
 
 def _product_input(body: dict):
     try:
@@ -127,6 +142,10 @@ def _recipe_input(body: dict):
             return "状态必须是 success、failed 或 pending"
         if "用了多少" in fields:
             return "用了多少不能小于 0"
+        if "试验日期" in fields:
+            for err in exc.errors():
+                if err.get("loc") and str(err["loc"][0]) == "试验日期":
+                    return err["msg"]
         return "配方数据格式错误"
     if not data.产品id or not data.试验日期:
         return "产品和试验日期为必填项"
@@ -168,6 +187,28 @@ def _record_inventory_movement(conn, product_id: int, before, after, reason: str
         """,
         (product_id, delta, before, after, reason, user),
     )
+
+
+def _rehash_product_recipes(conn, product_id: int, new_code: str) -> None:
+    """Recompute recipe hashes after the product code changed."""
+    recipes = conn.execute(
+        "SELECT id FROM recipes WHERE 产品id = ?", (product_id,)
+    ).fetchall()
+    for recipe in recipes:
+        materials = conn.execute(
+            """
+            SELECT 类型, 名称, 用量, 单位
+            FROM recipe_materials
+            WHERE 配方id = ?
+            ORDER BY 排序, id
+            """,
+            (recipe["id"],),
+        ).fetchall()
+        new_hash = recipe_hash(new_code, [dict(m) for m in materials])
+        conn.execute(
+            "UPDATE recipes SET 配方hash = ? WHERE id = ?",
+            (new_hash, recipe["id"]),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -254,23 +295,32 @@ async def api_product_create(request: Request):
         return fail(data)
     user = get_current_user(request) or ""
 
-    # duplicate check
-    dup = db_query_one("SELECT id FROM products WHERE 品号 = ?", (data.品号,))
-    if dup:
-        return fail(f"品号 {data.品号} 已存在")
-
     conn = get_db()
-    cur = conn.execute(
-        """
-        INSERT INTO products (品号, 规格, 品名, 当前数量, 备注, created_by, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """,
-        (data.品号, data.规格, data.品名, data.当前数量, data.备注, user),
-    )
-    new_id = cur.lastrowid
-    conn.commit()
-    conn.close()
-    return ok({"id": new_id, "品号": data.品号})
+    try:
+        conn.execute("BEGIN")
+        dup = conn.execute("SELECT id FROM products WHERE 品号 = ?", (data.品号,)).fetchone()
+        if dup:
+            conn.rollback()
+            return fail(f"品号 {data.品号} 已存在")
+
+        cur = conn.execute(
+            """
+            INSERT INTO products (品号, 规格, 品名, 当前数量, 备注, created_by, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """,
+            (data.品号, data.规格, data.品名, data.当前数量, data.备注, user),
+        )
+        new_id = cur.lastrowid
+        conn.commit()
+        return ok({"id": new_id, "品号": data.品号})
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        return fail(f"品号 {data.品号} 已存在")
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @app.get("/api/products/{product_id}")
@@ -288,34 +338,49 @@ async def api_product_update(product_id: int, request: Request):
     if isinstance(data, str):
         return fail(data)
 
-    dup = db_query_one("SELECT id FROM products WHERE 品号 = ? AND id != ?", (data.品号, product_id))
-    if dup:
-        return fail(f"品号 {data.品号} 已存在")
-    existing = db_query_one("SELECT 当前数量 FROM products WHERE id = ?", (product_id,))
-    if not existing:
-        return fail("产品不存在", 404)
-
     user = get_current_user(request) or ""
     conn = get_db()
-    cur = conn.execute(
-        """
-        UPDATE products
-        SET 品号=?, 规格=?, 品名=?, 当前数量=?, 备注=?, updated_at=CURRENT_TIMESTAMP
-        WHERE id=?
-        """,
-        (data.品号, data.规格, data.品名, data.当前数量, data.备注, product_id),
-    )
-    _record_inventory_movement(
-        conn,
-        product_id,
-        existing["当前数量"] or 0,
-        data.当前数量,
-        "手动修改库存",
-        user,
-    )
-    conn.commit()
-    conn.close()
-    return ok({"id": product_id})
+    try:
+        conn.execute("BEGIN")
+        dup = conn.execute(
+            "SELECT id FROM products WHERE 品号 = ? AND id != ?", (data.品号, product_id)
+        ).fetchone()
+        if dup:
+            conn.rollback()
+            return fail(f"品号 {data.品号} 已存在")
+        existing = conn.execute(
+            "SELECT 品号, 当前数量 FROM products WHERE id = ?", (product_id,)
+        ).fetchone()
+        if not existing:
+            conn.rollback()
+            return fail("产品不存在", 404)
+        old_code = existing["品号"]
+
+        conn.execute(
+            """
+            UPDATE products
+            SET 品号=?, 规格=?, 品名=?, 当前数量=?, 备注=?, updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (data.品号, data.规格, data.品名, data.当前数量, data.备注, product_id),
+        )
+        _record_inventory_movement(
+            conn,
+            product_id,
+            existing["当前数量"] or 0,
+            data.当前数量,
+            "手动修改库存",
+            user,
+        )
+        if old_code != data.品号:
+            _rehash_product_recipes(conn, product_id, data.品号)
+        conn.commit()
+        return ok({"id": product_id})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @app.post("/api/products/{product_id}/archive")
@@ -362,25 +427,33 @@ async def api_product_inventory_adjust(product_id: int, request: Request):
     if isinstance(data, str):
         return fail(data)
 
-    row = db_query_one("SELECT 当前数量 FROM products WHERE id = ?", (product_id,))
-    if not row:
-        return fail("产品不存在", 404)
-
-    before = row["当前数量"] or 0
-    after = before + data.变动数量
-    if after < 0:
-        return fail("库存不能小于 0")
-
     user = get_current_user(request) or ""
     conn = get_db()
-    conn.execute(
-        "UPDATE products SET 当前数量=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
-        (after, product_id),
-    )
-    _record_inventory_movement(conn, product_id, before, after, data.原因, user)
-    conn.commit()
-    conn.close()
-    return ok({"产品id": product_id, "变动数量": data.变动数量, "变动前": before, "变动后": after})
+    try:
+        conn.execute("BEGIN")
+        row = conn.execute("SELECT 当前数量 FROM products WHERE id = ?", (product_id,)).fetchone()
+        if not row:
+            conn.rollback()
+            return fail("产品不存在", 404)
+
+        before = row["当前数量"] or 0
+        after = before + data.变动数量
+        if after < 0:
+            conn.rollback()
+            return fail("库存不能小于 0")
+
+        conn.execute(
+            "UPDATE products SET 当前数量=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (after, product_id),
+        )
+        _record_inventory_movement(conn, product_id, before, after, data.原因, user)
+        conn.commit()
+        return ok({"产品id": product_id, "变动数量": data.变动数量, "变动前": before, "变动后": after})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @app.get("/api/products/{product_id}/inventory-movements")
@@ -603,29 +676,36 @@ async def api_recipe_update(recipe_id: int, request: Request):
     if isinstance(cleaned, str):
         return fail(cleaned)
 
-    prod = db_query_one("SELECT 品号 FROM products WHERE id = ?", (data.产品id,))
-    if not prod:
-        return fail("产品不存在")
-    existing = db_query_one("SELECT id FROM recipes WHERE id = ?", (recipe_id,))
-    if not existing:
-        return fail("配方记录不存在", 404)
-
-    h = recipe_hash(prod["品号"], cleaned)
-
     conn = get_db()
-    conn.execute(
-        """
-        UPDATE recipes
-        SET 产品id=?, 试验日期=?, 配方名称=?, 配方hash=?, 状态=?, 用了多少=?, 备注=?
-        WHERE id=?
-        """,
-        (data.产品id, data.试验日期, data.配方名称, h, data.状态, data.用了多少, data.备注, recipe_id),
-    )
-    conn.execute("DELETE FROM recipe_materials WHERE 配方id = ?", (recipe_id,))
-    insert_materials(conn, recipe_id, cleaned)
-    conn.commit()
-    conn.close()
-    return ok({"id": recipe_id})
+    try:
+        conn.execute("BEGIN")
+        prod = conn.execute("SELECT 品号 FROM products WHERE id = ?", (data.产品id,)).fetchone()
+        if not prod:
+            conn.rollback()
+            return fail("产品不存在")
+        existing = conn.execute("SELECT id FROM recipes WHERE id = ?", (recipe_id,)).fetchone()
+        if not existing:
+            conn.rollback()
+            return fail("配方记录不存在", 404)
+
+        h = recipe_hash(prod["品号"], cleaned)
+        conn.execute(
+            """
+            UPDATE recipes
+            SET 产品id=?, 试验日期=?, 配方名称=?, 配方hash=?, 状态=?, 用了多少=?, 备注=?
+            WHERE id=?
+            """,
+            (data.产品id, data.试验日期, data.配方名称, h, data.状态, data.用了多少, data.备注, recipe_id),
+        )
+        conn.execute("DELETE FROM recipe_materials WHERE 配方id = ?", (recipe_id,))
+        insert_materials(conn, recipe_id, cleaned)
+        conn.commit()
+        return ok({"id": recipe_id})
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 @app.delete("/api/recipes/{recipe_id}")
@@ -875,18 +955,18 @@ async def api_backup():
 
 
 @app.get("/api/export/excel")
-async def api_export_excel(type: str = "products"):
+async def api_export_excel(export_type: Annotated[str, Query(alias="type")] = "products"):
     try:
-        path = export_excel(type)
+        path = export_excel(export_type)
         return FileResponse(path, filename=os.path.basename(path))
     except Exception as e:
         return fail(f"导出失败: {e}")
 
 
 @app.get("/api/export/template")
-async def api_export_template(type: str = "products"):
+async def api_export_template(export_type: Annotated[str, Query(alias="type")] = "products"):
     try:
-        path = export_import_template(type)
+        path = export_import_template(export_type)
         return FileResponse(path, filename=os.path.basename(path))
     except Exception as e:
         return fail(f"导出模板失败: {e}")
@@ -1004,6 +1084,16 @@ def _mime_type(path: str) -> str:
         ".woff2": "font/woff2",
         ".ttf": "font/ttf",
     }.get(ext, "application/octet-stream")
+
+
+@app.get("/兴达logo.ico")
+async def logo_ico():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "兴达logo.ico"))
+
+
+@app.get("/兴达logo.jpg")
+async def logo_jpg():
+    return FileResponse(os.path.join(os.path.dirname(__file__), "兴达logo.jpg"))
 
 
 @app.get("/static/{path:path}")

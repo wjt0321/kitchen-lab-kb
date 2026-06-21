@@ -21,7 +21,10 @@ RECIPE_COLUMNS = [
     "用了多少", "备注", "created_by", "created_at",
 ]
 MATERIAL_COLUMNS = ["id", "配方id", "类型", "名称", "用量", "单位", "排序"]
-REQUIRED_TABLES = ("products", "recipes", "recipe_materials")
+INVENTORY_MOVEMENT_COLUMNS = [
+    "id", "产品id", "变动数量", "变动前", "变动后", "原因", "created_by", "created_at",
+]
+REQUIRED_TABLES = ("products", "recipes", "recipe_materials", "inventory_movements")
 
 
 def import_base64(filename: str, content_base64: str) -> Dict[str, int]:
@@ -54,8 +57,10 @@ def import_json_payload(payload: dict) -> Dict[str, int]:
         conn.execute("BEGIN")
         conn.execute("DELETE FROM recipe_materials")
         conn.execute("DELETE FROM recipes")
+        conn.execute("DELETE FROM inventory_movements")
         conn.execute("DELETE FROM products")
         _insert_rows(conn, "products", PRODUCT_COLUMNS, payload.get("products", []))
+        _insert_rows(conn, "inventory_movements", INVENTORY_MOVEMENT_COLUMNS, payload.get("inventory_movements", []))
         _insert_rows(conn, "recipes", RECIPE_COLUMNS, payload.get("recipes", []))
         _insert_rows(conn, "recipe_materials", MATERIAL_COLUMNS, payload.get("materials", []))
         conn.commit()
@@ -69,6 +74,7 @@ def import_json_payload(payload: dict) -> Dict[str, int]:
         "products": len(payload.get("products", [])),
         "recipes": len(payload.get("recipes", [])),
         "materials": len(payload.get("materials", [])),
+        "inventory_movements": len(payload.get("inventory_movements", [])),
     }
 
 
@@ -101,6 +107,9 @@ def _validate_json_payload(payload: dict) -> None:
     for key in ("products", "recipes", "materials"):
         if key not in payload or not isinstance(payload[key], list):
             raise ValueError(f"JSON 缺少 {key} 列表")
+    for key in ("inventory_movements",):
+        if key in payload and not isinstance(payload[key], list):
+            raise ValueError(f"JSON 中 {key} 必须是列表")
 
 
 def _insert_rows(conn: sqlite3.Connection, table: str, columns: List[str], rows: Iterable[dict]) -> None:
@@ -127,6 +136,7 @@ def _validate_sqlite_database(path: str) -> Dict[str, int]:
             "products": conn.execute("SELECT COUNT(*) FROM products").fetchone()[0],
             "recipes": conn.execute("SELECT COUNT(*) FROM recipes").fetchone()[0],
             "materials": conn.execute("SELECT COUNT(*) FROM recipe_materials").fetchone()[0],
+            "inventory_movements": conn.execute("SELECT COUNT(*) FROM inventory_movements").fetchone()[0],
         }
     finally:
         conn.close()
@@ -134,4 +144,7 @@ def _validate_sqlite_database(path: str) -> Dict[str, int]:
 
 def _safety_backup() -> None:
     backup.DB_PATH = db.DB_PATH
-    backup.do_backup()
+    try:
+        backup.do_backup()
+    except Exception as exc:
+        raise ValueError(f"导入前安全备份失败，已取消导入：{exc}") from exc

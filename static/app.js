@@ -270,13 +270,10 @@ const app = {
 
     const existing = this.tabs.find(t => t.id === meta.id);
     if (existing) {
-      const becameActive = existing.id !== this.activeTabId;
       existing.path = path;
       existing.params = params;
       this.activateTab(existing.id);
-      if (!becameActive) {
-        await this.renderActiveTab();
-      }
+      await this.renderActiveTab();
       return existing;
     }
 
@@ -897,7 +894,11 @@ const app = {
           <a class="btn btn-primary" href="#/products/new">${this.renderIcon('plus', 'me-1')}新增产品</a>
           <input id="action-import-file" class="hide" type="file" accept=".json,.zip,application/json,application/zip" onchange="app.importSelectedFile(this)">
           <button class="btn btn-outline-secondary" onclick="app.importData()">${this.renderIcon('file-import', 'me-1')}批量导入</button>
-          <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()">${this.renderIcon('archive', 'me-1')}批量归档</button>
+          ${status === 'archived' ? `
+            <button class="btn btn-outline-danger" onclick="app.batchDeleteProducts()">${this.renderIcon('trash', 'me-1')}批量删除</button>
+          ` : `
+            <button class="btn btn-outline-warning" onclick="app.batchArchiveProducts()">${this.renderIcon('archive', 'me-1')}批量归档</button>
+          `}
           <button class="btn btn-outline-secondary" onclick="app.exportSelectedProducts()">${this.renderIcon('file-export', 'me-1')}导出选中</button>
         </div>
         <div class="table-scrollbar" aria-hidden="true">
@@ -961,6 +962,24 @@ const app = {
       this.toast('批量归档完成');
       this.route();
     }, '确认归档');
+  },
+
+  async batchDeleteProducts() {
+    const ids = [...this.selectedProductIds];
+    if (ids.length === 0) { this.toast('请先勾选要删除的产品', 'info'); return; }
+    this.modal(`确认删除 ${ids.length} 个产品?`, '删除后会移除这些产品及其配方记录，不可恢复。', async () => {
+      let deleted = 0;
+      for (const id of ids) {
+        const r = await this.del(`/api/products/${id}`);
+        if (r.ok) deleted++;
+        else this.toast(`删除 #${id} 失败: ${r.error || ''}`, 'error');
+      }
+      this.selectedProductIds.clear();
+      this.updateStatusBar();
+      this.refreshStatusTotals();
+      this.toast(`批量删除完成，成功删除 ${deleted} 个产品`);
+      this.route();
+    }, '确认删除', true);
   },
 
   exportSelectedProducts() {
@@ -1283,7 +1302,7 @@ const app = {
           <td>${this.escapeHtml(item.试验日期)}</td>
           <td>${this.escapeHtml(item.配方名称||'-')}</td>
           <td>${this.statusBadge(item.状态)}</td>
-          <td>${item.用了多少||'-'}${item.用了多少?'g':''}</td>
+          <td>${item.用了多少||'-'}</td>
           <td>${this.formatSuccessRate(item)}</td>
           <td>${this.escapeHtml(item.created_by||'-')}</td>
           <td><a class="btn btn-outline-secondary btn-sm" href="#/recipes/${item.id}" onclick="event.stopPropagation()">查看</a></td>
@@ -1664,7 +1683,7 @@ const app = {
       产品id: parseInt(document.getElementById('rf-产品id').value),
       试验日期: document.getElementById('rf-试验日期').value,
       配方名称: document.getElementById('rf-配方名称').value.trim(),
-      用了多少: parseInt(document.getElementById('rf-用了多少').value || '0'),
+      用了多少: parseFloat(document.getElementById('rf-用了多少').value || '0'),
       状态: document.querySelector('input[name="rf-状态"]:checked')?.value || 'pending',
       备注: document.getElementById('rf-备注').value.trim(),
       原料辅料: materials,
@@ -1753,8 +1772,8 @@ const app = {
               </div>
             </div>
             <div class="hash-row mt-3">
-              <span class="hash-badge">${d.配方hash}</span>
-              <button class="btn btn-ghost-secondary btn-sm" onclick="app.copyText('${d.配方hash}', '配方哈希已复制', '复制配方哈希失败')">${this.renderIcon('copy', 'me-1')}复制哈希</button>
+              <span class="hash-badge">${this.escapeHtml(d.配方hash)}</span>
+              <button class="btn btn-ghost-secondary btn-sm" onclick="app.copyText('${this.escapeHtml(d.配方hash)}', '配方哈希已复制', '复制配方哈希失败')">${this.renderIcon('copy', 'me-1')}复制哈希</button>
             </div>
           </div>
         </div>
@@ -2012,7 +2031,7 @@ const app = {
 
   // ===== Backup / Export =====
   async backup() {
-    this.modal('确认备份数据库?', '将把当前 SQLite 数据库打包到 backups 目录，并保留最近 10 个备份。', () => {
+    this.modal('确认备份数据库?', '将把当前 SQLite 数据库打包到 backups 目录，并保留最近 5 个备份。', () => {
       this.runBackup();
     }, '确认备份');
   },

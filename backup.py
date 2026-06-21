@@ -7,10 +7,14 @@ from datetime import datetime
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "data", "kitchen.db")
 BACKUP_DIR = os.path.join(os.path.dirname(__file__), "backups")
-DATABASE_BACKUP_DIR = os.path.join(BACKUP_DIR, "database")
 LEGACY_DIR_NAME = "_历史散文件"
 KEEP_COUNT = 5
 BACKUP_PATTERN = "kitchen_*.zip"
+
+
+def _database_backup_dir() -> str:
+    """Compute at runtime so tests can patch BACKUP_DIR."""
+    return os.path.join(BACKUP_DIR, "database")
 
 
 def do_backup() -> str:
@@ -19,7 +23,7 @@ def do_backup() -> str:
         raise FileNotFoundError(f"数据库不存在: {DB_PATH}")
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"kitchen_{now}.zip"
-    filepath = os.path.join(DATABASE_BACKUP_DIR, filename)
+    filepath = os.path.join(_database_backup_dir(), filename)
 
     with zipfile.ZipFile(filepath, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.write(DB_PATH, arcname="kitchen.db")
@@ -29,7 +33,7 @@ def do_backup() -> str:
 
 
 def _ensure_dir() -> None:
-    os.makedirs(DATABASE_BACKUP_DIR, exist_ok=True)
+    os.makedirs(_database_backup_dir(), exist_ok=True)
     _move_legacy_flat_backups()
 
 
@@ -48,7 +52,7 @@ def _move_legacy_flat_backups() -> None:
 
 def _backup_files() -> list[str]:
     files = []
-    files.extend(glob.glob(os.path.join(DATABASE_BACKUP_DIR, BACKUP_PATTERN)))
+    files.extend(glob.glob(os.path.join(_database_backup_dir(), BACKUP_PATTERN)))
     files.extend(glob.glob(os.path.join(BACKUP_DIR, LEGACY_DIR_NAME, BACKUP_PATTERN)))
     return sorted(files, key=os.path.getmtime)
 

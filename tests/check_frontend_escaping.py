@@ -34,7 +34,7 @@ def main():
                 page = browser.new_page()
                 page.goto(f"{base_url}/login", wait_until="networkidle")
                 page.fill("#login-user", "测试用户")
-                page.click('button:has-text("登录")')
+                page.click('button:has-text("进入工作台")')
                 page.wait_for_load_state("networkidle")
                 page.wait_for_timeout(800)
                 assert page.locator(f"text={code}").count() == 1

@@ -18,7 +18,16 @@ def login_user(username: str) -> None:
 def logout_user(username: str) -> None:
     conn = get_db()
     conn.execute(
-        "UPDATE user_logins SET 登出时间 = CURRENT_TIMESTAMP WHERE 用户名 = ? AND 登出时间 IS NULL",
+        """
+        UPDATE user_logins
+        SET 登出时间 = CURRENT_TIMESTAMP
+        WHERE id = (
+            SELECT id FROM user_logins
+            WHERE 用户名 = ? AND 登出时间 IS NULL
+            ORDER BY 登录时间 DESC, id DESC
+            LIMIT 1
+        )
+        """,
         (username,),
     )
     conn.commit()

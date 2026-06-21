@@ -13,10 +13,10 @@ def main():
             page.on("pageerror", lambda exc: errors.append(str(exc)))
             page.goto(f"{base_url}/login", wait_until="networkidle")
             page.fill("#login-user", "测试用户")
-            page.click('button:has-text("登录")')
+            page.click('button:has-text("进入工作台")')
             page.wait_for_load_state("networkidle")
             page.wait_for_timeout(500)
-            products_title_visible = page.locator(".page-title", has_text="产品列表").is_visible()
+            products_title_visible = page.locator(".card-title", has_text="产品列表").is_visible()
             login_input_count = page.locator("#login-user").count()
             browser.close()
 

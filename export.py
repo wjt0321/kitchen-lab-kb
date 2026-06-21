@@ -160,6 +160,7 @@ def export_json() -> str:
         "products": [dict(r) for r in db_query("SELECT * FROM products ORDER BY id")],
         "recipes": [dict(r) for r in db_query("SELECT * FROM recipes ORDER BY id")],
         "materials": [dict(r) for r in db_query("SELECT * FROM recipe_materials ORDER BY id")],
+        "inventory_movements": [dict(r) for r in db_query("SELECT * FROM inventory_movements ORDER BY id")],
     }
     filename = f"export_{now}.json"
     path = _export_path("json", filename)
